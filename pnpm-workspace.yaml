@@ -1,0 +1,6 @@
+packages:
+  - 'apps/*'
+  - 'services/*'
+  - 'packages/*'
+allowBuilds:
+  unrs-resolver: true

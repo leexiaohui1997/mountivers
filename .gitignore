@@ -1,0 +1,8 @@
+.DS_Store
+
+.lingma/*
+.codebuddy/*
+
+dist/
+node_modules/
+*.tsbuildinfo
