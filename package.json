@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
-    "build": "pnpm -r -if-present run build",
+    "test": "pnpm -r --if-present run test",
+    "build": "pnpm -r --if-present run build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write --ignore-unknown .",
