@@ -3,5 +3,7 @@ packages:
   - 'services/*'
   - 'packages/*'
 allowBuilds:
+  '@prisma/engines': true
   esbuild: true
+  prisma: true
   unrs-resolver: true
