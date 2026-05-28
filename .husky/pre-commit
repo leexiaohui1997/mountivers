@@ -4,6 +4,10 @@
 # 启用严格模式：任何命令失败都会立即退出
 set -e
 
+# 运行 pre-commit
+echo "🚀 运行 pre-commit..."
+pnpm run -r --if-present pre-commit
+
 # 类型检查
 echo "🔍 运行 TypeScript 类型检查..."
 pnpm run type-check
