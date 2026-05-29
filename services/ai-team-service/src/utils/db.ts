@@ -1,10 +1,11 @@
 import { PrismaClient } from '@mountivers/ai-team-db'
 import { PrismaPg } from '@prisma/adapter-pg'
 
+import { env } from './env.js'
 import { getErrorMsg } from './error.js'
 import { errorLog, infoLog } from './log.js'
 
-const { DATABASE_URL } = process.env
+const DATABASE_URL = env('DATABASE_URL')
 if (!DATABASE_URL) {
   errorLog('DATABASE_URL 未设置')
   process.exit(1)

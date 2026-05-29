@@ -1,11 +1,16 @@
 import express from 'express'
 
+import { useErrorMiddleware } from './middlewares/error.js'
+import { useUserModule } from './modules/user/index.js'
 import { PORT } from './utils/env.js'
 import { successLog } from './utils/log.js'
 
 import type { Server } from 'http'
 
 export const app: express.Express = express()
+
+useUserModule(app)
+useErrorMiddleware(app)
 
 let server: Server | null = null
 
