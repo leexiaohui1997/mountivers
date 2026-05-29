@@ -48,6 +48,8 @@ importers:
         specifier: ^8.58.2
         version: 8.59.4(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
 
+  packages/ai-team-shared: {}
+
   services/ai-team-db:
     dependencies:
       '@prisma/client':
@@ -65,6 +67,9 @@ importers:
       '@mountivers/ai-team-db':
         specifier: workspace:*
         version: link:../ai-team-db
+      '@mountivers/ai-team-shared':
+        specifier: workspace:*
+        version: link:../../packages/ai-team-shared
       '@prisma/adapter-pg':
         specifier: ^7.8.0
         version: 7.8.0
