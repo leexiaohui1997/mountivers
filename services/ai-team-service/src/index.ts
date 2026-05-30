@@ -1,6 +1,7 @@
+import { getErrorMsg } from '@mountivers/ai-team-shared'
+
 import { closeServer, startServer } from './server.js'
 import { connectDB, disconnectDB } from './utils/db.js'
-import { getErrorMsg } from './utils/error.js'
 import { errorLog } from './utils/log.js'
 
 let isShutdowning = false

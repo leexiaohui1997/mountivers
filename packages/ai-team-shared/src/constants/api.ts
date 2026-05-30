@@ -16,3 +16,9 @@ export const ApiCodeMsg: Record<ApiCode, string> = {
   [ApiCode.SYSTEM_NOT_INITIALIZED]: '系统未初始化',
   [ApiCode.ADMIN_NOT_INITIALIZED]: '管理员未初始化',
 }
+
+export interface ApiResponse<T = unknown> {
+  code: ApiCode
+  message: string
+  data: T
+}

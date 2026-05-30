@@ -1,8 +1,7 @@
-import { ApiCode, ApiError } from '@mountivers/ai-team-shared'
+import { ApiCode, ApiError, getErrorMsg } from '@mountivers/ai-team-shared'
 
 import type { Express, NextFunction, Request, Response } from 'express'
 
-import { getErrorMsg } from '@/utils/error.js'
 import { errorLog } from '@/utils/log.js'
 
 export function useErrorMiddleware(app: Express) {

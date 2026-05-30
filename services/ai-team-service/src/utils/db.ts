@@ -1,8 +1,8 @@
 import { PrismaClient } from '@mountivers/ai-team-db'
+import { getErrorMsg } from '@mountivers/ai-team-shared'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 import { env } from './env.js'
-import { getErrorMsg } from './error.js'
 import { errorLog, infoLog } from './log.js'
 
 const DATABASE_URL = env('DATABASE_URL')

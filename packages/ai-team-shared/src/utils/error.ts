@@ -8,3 +8,10 @@ export class ApiError extends Error {
     super(message)
   }
 }
+
+export function getErrorMsg(err: unknown) {
+  if (err instanceof Error) {
+    return err.message
+  }
+  return String(err)
+}
