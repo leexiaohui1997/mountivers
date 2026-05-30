@@ -1,3 +1,6 @@
+import { dirname } from 'path'
+import { fileURLToPath } from 'url'
+
 import js from '@eslint/js'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import eslintConfigPrettier from 'eslint-config-prettier'
@@ -7,9 +10,12 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
 export default defineConfig([
   // 全局忽略
-  globalIgnores(['**/dist', '**/node_modules']),
+  globalIgnores(['**/dist', '**/node_modules', '**/generated']),
 
   // 所有 JS 文件的基线规则
   {
@@ -28,6 +34,11 @@ export default defineConfig([
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: __dirname,
+      },
+    },
     rules: {
       complexity: ['error', { max: 10 }],
       '@typescript-eslint/no-unused-vars': [
@@ -60,6 +71,9 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+      parserOptions: {
+        tsconfigRootDir: __dirname,
+      },
     },
   },
 

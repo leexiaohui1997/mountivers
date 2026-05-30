@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
-    "dev:ai-team": "pnpm --parallel --filter @mountivers/ai-team-shared --filter @mountivers/ai-team-service run dev",
+    "dev:ai-team": "pnpm --parallel --filter @mountivers/ai-team-shared --filter @mountivers/ai-team-service --filter @mountivers/ai-team-web run dev",
     "test": "pnpm -r --if-present run test",
     "build": "pnpm -r --if-present run build",
     "lint": "eslint .",
