@@ -10,7 +10,9 @@
     "type-check": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@mountivers/ai-team-shared": "workspace:*",
     "antd": "^6.4.3",
+    "axios": "^1.16.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router": "^7.16.0"
