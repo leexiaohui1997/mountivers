@@ -40,5 +40,12 @@
   "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
 
   // 启用 ESLint
-  "eslint.enable": true
+  "eslint.enable": true,
+
+  // Tailwind CSS IntelliSense 配置
+  "tailwindCSS.experimental.classRegex": [
+    "[cC]lass[nN]ames?\\s*=\\s*\\{?\\s*[\"'`]([^\"'`]*)[\"'`]",
+    "[cC]lass[nN]ames?\\s*:\\s*\\{\\s*[^:]+:\\s*[\"'`]([^\"'`]*)[\"'`]",
+    "[cC]lass[nN]ames?\\s*=\\s*\\{\\s*\\{\\s*[^:]+:\\s*[\"'`]([^\"'`]*)[\"'`]"
+  ]
 }
