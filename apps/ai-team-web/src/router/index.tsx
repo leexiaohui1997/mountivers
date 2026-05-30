@@ -1,19 +1,19 @@
 import { createBrowserRouter } from 'react-router'
 
-import { globalRouteLoader } from './loaders'
+import { InitAdmin } from './components'
+import GlobalGuard from './guards/global'
 
 export const router = createBrowserRouter([
   {
-    path: '/',
-    loader: globalRouteLoader,
+    element: <GlobalGuard />,
     children: [
       {
-        index: true,
+        path: '/',
         element: <div>Home</div>,
       },
       {
         path: 'init/admin',
-        element: <div>Init Admin</div>,
+        element: <InitAdmin />,
       },
     ],
   },

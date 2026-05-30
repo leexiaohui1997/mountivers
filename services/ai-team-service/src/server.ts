@@ -11,6 +11,9 @@ import type { Server } from 'http'
 
 export const app: express.Express = express()
 
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
+
 useCorsMiddleware(app)
 useUserModule(app)
 useUtilsModule(app)

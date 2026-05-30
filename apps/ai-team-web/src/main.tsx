@@ -6,7 +6,7 @@ import { RouterProvider } from 'react-router/dom'
 
 import { THEME } from './constants/theme.ts'
 import { router } from './router/index.tsx'
-import './scss/index.css'
+import './styles/index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

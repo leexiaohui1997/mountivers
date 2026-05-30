@@ -6,7 +6,7 @@ import { prisma } from '@/utils/db.js'
 import { errorLog, infoLog } from '@/utils/log.js'
 
 // 放行白名单
-const WHITE_LIST = ['/api/admin/create']
+const WHITE_LIST = ['/api/admin/init']
 // 缓存结果
 let checkPassed = false
 

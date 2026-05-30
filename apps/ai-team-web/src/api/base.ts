@@ -24,7 +24,7 @@ service.interceptors.response.use(
   },
 )
 
-export function defineApi<D = void, T = void>(
+export function defineApi<T = void, D = void>(
   fn: (data: D) => Promise<AxiosResponse<ApiResponse<T>>>,
 ) {
   return fn

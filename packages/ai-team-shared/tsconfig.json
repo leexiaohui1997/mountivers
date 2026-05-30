@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "types": [],
 
     "rootDir": "src",
@@ -14,6 +14,7 @@
     "composite": true,
     "incremental": true,
     "declaration": true,
+    "declarationMap": true,
     "sourceMap": true,
     "tsBuildInfoFile": "dist/.tsbuildinfo",
 

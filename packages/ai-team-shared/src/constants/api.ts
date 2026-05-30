@@ -3,6 +3,8 @@ export enum ApiCode {
   SUCCESS = 0,
   // 未知错误
   UNKNOWN_ERROR = 1,
+  // 参数错误
+  PARAM_ERROR = 2,
 
   // 系统未初始化
   SYSTEM_NOT_INITIALIZED = 1000,
@@ -13,6 +15,7 @@ export enum ApiCode {
 export const ApiCodeMsg: Record<ApiCode, string> = {
   [ApiCode.SUCCESS]: '成功',
   [ApiCode.UNKNOWN_ERROR]: '未知错误',
+  [ApiCode.PARAM_ERROR]: '参数错误',
   [ApiCode.SYSTEM_NOT_INITIALIZED]: '系统未初始化',
   [ApiCode.ADMIN_NOT_INITIALIZED]: '管理员未初始化',
 }
