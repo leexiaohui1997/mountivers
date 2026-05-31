@@ -3,6 +3,7 @@ import { getErrorMsg } from '@mountivers/ai-team-shared'
 import { closeServer, startServer } from './server.js'
 import { connectDB, disconnectDB } from './utils/db.js'
 import { errorLog } from './utils/log.js'
+import { connectRedis, disconnectRedis } from './utils/redis.js'
 
 let isShutdowning = false
 async function shutdown() {
@@ -10,6 +11,7 @@ async function shutdown() {
   try {
     isShutdowning = true
     await closeServer()
+    await disconnectRedis()
     await disconnectDB()
   } finally {
     isShutdowning = false
@@ -20,6 +22,7 @@ async function shutdown() {
 async function bootstrap() {
   try {
     await connectDB()
+    await connectRedis()
     await startServer()
     process.once('SIGINT', () => void shutdown())
     process.once('SIGTERM', () => void shutdown())
