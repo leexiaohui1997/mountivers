@@ -3,12 +3,7 @@ import { Router, type Express } from 'express'
 import z from 'zod'
 
 import { authMiddleware } from '../middlewares/auth.js'
-import {
-  generateAccessToken,
-  generateRefreshToken,
-  refreshAccessToken,
-  removeToken,
-} from '../utils/token.js'
+import { generateToken, refreshToken, removeToken } from '../utils/token.js'
 import { ensureUser } from '../utils/user.js'
 
 import { adminRouter } from './admin.js'
@@ -28,11 +23,9 @@ export function useUserRouter(app: Express) {
     }
 
     await removeToken(user.id)
-    const accessToken = await generateAccessToken(user.id)
-    const refreshToken = await generateRefreshToken(user.id)
     res.status(201).json({
       code: ApiCode.SUCCESS,
-      data: { accessToken, refreshToken },
+      data: await generateToken(user.id),
     })
   })
 
@@ -44,11 +37,10 @@ export function useUserRouter(app: Express) {
   })
 
   router.post('/refresh_token', async (req, res) => {
-    const { refreshToken } = z.object({ refreshToken: z.string() }).parse(req.body)
-    const accessToken = await refreshAccessToken(refreshToken)
+    const { refreshToken: token } = z.object({ refreshToken: z.string() }).parse(req.body)
     res.status(200).json({
       code: ApiCode.SUCCESS,
-      data: { accessToken },
+      data: await refreshToken(token),
     })
   })
 

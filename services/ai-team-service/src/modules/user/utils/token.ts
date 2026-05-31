@@ -56,13 +56,19 @@ export async function verifyRefreshToken(token: string) {
   return id
 }
 
-export async function refreshAccessToken(refreshToken: string) {
-  const id = await verifyRefreshToken(refreshToken)
-  await removeAccessToken(id)
-  return generateAccessToken(id)
+export async function generateToken(id: string) {
+  const accessToken = await generateAccessToken(id)
+  const refreshToken = await generateRefreshToken(id)
+  return { accessToken, refreshToken }
 }
 
 export async function removeToken(id: string) {
   await removeAccessToken(id)
   await removeRefreshToken(id)
+}
+
+export async function refreshToken(refreshToken: string) {
+  const id = await verifyRefreshToken(refreshToken)
+  await removeToken(id)
+  return generateToken(id)
 }
