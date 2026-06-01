@@ -1,5 +1,5 @@
 import { ApiCode, ApiError } from '@mountivers/ai-team-shared'
-import { sign } from 'jsonwebtoken'
+import jwt from 'jsonwebtoken'
 
 import { env } from '@/utils/env.js'
 import { redis } from '@/utils/redis.js'
@@ -11,7 +11,7 @@ const ACCESS_TOKEN_EXPIRES_IN = 15 * 60
 const REFRESH_TOKEN_EXPIRES_IN = 7 * 24 * 60 * 60
 
 export async function generateAccessToken(id: string) {
-  const token = sign({ id }, ACCESS_TOKEN_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES_IN })
+  const token = jwt.sign({ id }, ACCESS_TOKEN_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES_IN })
   redis.setEx(`access_token:${token}`, ACCESS_TOKEN_EXPIRES_IN, id)
   redis.setEx(`access_token:${id}`, ACCESS_TOKEN_EXPIRES_IN, token)
   return token
@@ -34,7 +34,7 @@ export async function verifyAccessToken(token: string) {
 }
 
 export async function generateRefreshToken(id: string) {
-  const token = sign({ id }, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRES_IN })
+  const token = jwt.sign({ id }, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRES_IN })
   redis.setEx(`refresh_token:${token}`, REFRESH_TOKEN_EXPIRES_IN, id)
   redis.setEx(`refresh_token:${id}`, REFRESH_TOKEN_EXPIRES_IN, token)
   return token
