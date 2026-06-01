@@ -7,8 +7,12 @@ export type EnsureAdminContextType = {
   refresh: () => void
 }
 
-export const EnsureAdminContext = createContext<EnsureAdminContextType>(null)
+export const EnsureAdminContext = createContext<EnsureAdminContextType | null>(null)
 
 export function useEnsureAdminContext() {
-  return useContext(EnsureAdminContext)
+  const context = useContext(EnsureAdminContext)
+  if (!context) {
+    throw new Error('useEnsureAdminContext must be used within a EnsureAdminProvider')
+  }
+  return context
 }

@@ -1,17 +1,19 @@
-import { createSlice } from '@reduxjs/toolkit'
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
 import type { User } from '@mountivers/ai-team-db'
 
 export type AuthState = {
-  token: string
-  accountInfo: User | null
+  me: User | null
 }
 
 export const authSlice = createSlice({
   name: 'auth',
   initialState: {
-    token: '',
-    accountInfo: null,
+    me: null,
   } satisfies AuthState as AuthState,
-  reducers: {},
+  reducers: {
+    setMe: (state, action: PayloadAction<User | null>) => {
+      state.me = action.payload
+    },
+  },
 })

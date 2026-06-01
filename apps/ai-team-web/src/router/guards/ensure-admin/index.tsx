@@ -26,7 +26,7 @@ export default function EnsureAdminGuard({ children }: { children: ReactNode }) 
     }
   })
 
-  if (loading) {
+  if (loading || !data) {
     return <></>
   }
 
@@ -38,7 +38,7 @@ export default function EnsureAdminGuard({ children }: { children: ReactNode }) 
     return <Navigate to={INIT_ADMIN_PATH} state={{ from: location }} replace />
   }
 
-  if (data === CheckStatus.CHECKED_PASSED && location.pathname === INIT_ADMIN_PATH) {
+  if (location.pathname === INIT_ADMIN_PATH) {
     return <Navigate to={location.state?.from || '/'} replace />
   }
 

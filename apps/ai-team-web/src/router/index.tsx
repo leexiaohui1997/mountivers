@@ -1,6 +1,6 @@
 import { createBrowserRouter } from 'react-router'
 
-import { InitAdmin } from './components'
+import { InitAdmin, Login } from './components'
 import GlobalGuard from './guards/global'
 
 export type RouteHandle = {
@@ -24,7 +24,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/login',
-        element: <div>Login</div>,
+        element: <Login />,
       },
     ],
   },

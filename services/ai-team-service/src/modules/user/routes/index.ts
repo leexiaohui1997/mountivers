@@ -1,5 +1,6 @@
 import { ApiCode, ApiError, UserSchema } from '@mountivers/ai-team-shared'
 import { Router, type Express } from 'express'
+import { omit } from 'lodash-es'
 import z from 'zod'
 
 import { authMiddleware } from '../middlewares/auth.js'
@@ -41,6 +42,13 @@ export function useUserRouter(app: Express) {
     res.status(200).json({
       code: ApiCode.SUCCESS,
       data: await refreshToken(token),
+    })
+  })
+
+  router.get('/me', authMiddleware, async (req, res) => {
+    res.status(200).json({
+      code: ApiCode.SUCCESS,
+      data: omit(req.user, 'password'),
     })
   })
 

@@ -14,5 +14,5 @@ export function checkMatchHandle(
   checkParent = false,
 ) {
   const targets = checkParent ? matches : [matches[matches.length - 1]]
-  return targets.some((match) => checkFn(match.handle))
+  return targets.some((match) => checkFn(match.handle as RouteHandle))
 }

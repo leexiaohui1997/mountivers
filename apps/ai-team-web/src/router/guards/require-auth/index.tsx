@@ -9,7 +9,7 @@ import { useAppSelector } from '@/stores'
 export default function RequireAuthGuard({ children }: { children: ReactNode }) {
   const matches = useMatches()
   const location = useLocation()
-  const isLogined = useAppSelector((state) => !!state.auth.token)
+  const isLogined = useAppSelector((state) => !!state.auth.me)
   const requireAuth = checkMatchHandle(matches, (handle) => !!handle?.requireAuth, true)
 
   if (location.pathname === LOGIN_PATH && isLogined) {
