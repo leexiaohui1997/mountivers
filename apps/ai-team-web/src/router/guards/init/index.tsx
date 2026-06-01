@@ -9,7 +9,7 @@ import { getMe } from '@/api/user'
 import { authSlice } from '@/stores/auth'
 import { getAccessToken } from '@/utils/token'
 
-export function InitGuard({ children }: { children: ReactNode }) {
+export default function InitGuard({ children }: { children: ReactNode }) {
   const dispatch = useDispatch()
 
   const { runAsync: refreshMe } = useRequest(

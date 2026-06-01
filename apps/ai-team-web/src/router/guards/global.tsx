@@ -1,14 +1,17 @@
 import { Outlet } from 'react-router'
 
 import EnsureAdminGuard from './ensure-admin'
+import InitGuard from './init'
 import RequireAuthGuard from './require-auth'
 
 export default function GlobalGuard() {
   return (
     <EnsureAdminGuard>
-      <RequireAuthGuard>
-        <Outlet />
-      </RequireAuthGuard>
+      <InitGuard>
+        <RequireAuthGuard>
+          <Outlet />
+        </RequireAuthGuard>
+      </InitGuard>
     </EnsureAdminGuard>
   )
 }

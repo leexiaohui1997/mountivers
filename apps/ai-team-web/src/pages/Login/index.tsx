@@ -11,7 +11,7 @@ import type z from 'zod'
 
 import { login } from '@/api/user'
 import { LOGIN_FALLBACK_PATH, REGIST_PATH } from '@/constants/config'
-import { useInitContext } from '@/guards/Init/context'
+import { useInitContext } from '@/router/guards/init/context'
 import { setTokens } from '@/utils/token'
 
 const formRule = createSchemaFieldRule(UserSchema)
