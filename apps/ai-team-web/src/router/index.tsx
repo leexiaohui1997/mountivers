@@ -1,11 +1,10 @@
 import { createBrowserRouter } from 'react-router'
 
-import { InitAdmin, Login } from './components'
 import GlobalGuard from './guards/global'
+import { ADMIN_ROUTES } from './modules/admin'
+import { BASE_ROUTES } from './modules/base'
 
-export type RouteHandle = {
-  requireAuth?: boolean
-}
+import type { RouteHandle } from './type'
 
 export const router = createBrowserRouter([
   {
@@ -18,14 +17,8 @@ export const router = createBrowserRouter([
           requireAuth: true,
         } satisfies RouteHandle,
       },
-      {
-        path: '/init/admin',
-        element: <InitAdmin />,
-      },
-      {
-        path: '/login',
-        element: <Login />,
-      },
+      ...ADMIN_ROUTES,
+      ...BASE_ROUTES,
     ],
   },
 ])

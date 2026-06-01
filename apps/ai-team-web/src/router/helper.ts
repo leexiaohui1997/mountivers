@@ -1,4 +1,4 @@
-import type { RouteHandle } from '.'
+import type { RouteHandle } from './type'
 import type { UIMatch } from 'react-router'
 
 /**

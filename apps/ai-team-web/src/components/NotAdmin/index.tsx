@@ -3,15 +3,15 @@ import { Link, useNavigate } from 'react-router'
 
 import { HOME_PATH } from '@/constants/config'
 
-export default function NotFound() {
+export default function NotAdmin() {
   const navigate = useNavigate()
 
   return (
     <div className="h-full flex flex-col items-center justify-center">
       <Result
-        status={404}
-        title="404"
-        subTitle="此页面未找到"
+        status={403}
+        title="403"
+        subTitle="暂无此页面访问权限"
         extra={
           <Space size="medium">
             <Link to={HOME_PATH} replace>

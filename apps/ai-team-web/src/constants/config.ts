@@ -5,3 +5,6 @@ export const LOGIN_FALLBACK_PATH = '/'
 
 // 注册页路径
 export const REGIST_PATH = '/regist'
+
+// 首页路径
+export const HOME_PATH = '/'
