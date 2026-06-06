@@ -1,9 +1,11 @@
 .DS_Store
+.docker
 
 .lingma/*
 .codebuddy/*
 
 dist/
+generated/
 node_modules/
 *.tsbuildinfo
 
