@@ -1,5 +1,6 @@
 packages:
   - 'apps/*'
+  - 'nest/*'
   - 'services/*'
   - 'packages/*'
 allowBuilds:

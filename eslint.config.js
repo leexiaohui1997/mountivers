@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint'
 
 export default defineConfig([
   // 全局忽略
-  globalIgnores(['**/dist', '**/node_modules']),
+  globalIgnores(['**/dist', '**/node_modules', '**/generated']),
 
   // 所有 JS 文件的基线规则
   {
@@ -60,6 +60,22 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+  },
+
+  // nest 包的专属规则
+  {
+    files: ['nest/**/src/**/*.{ts,tsx}', 'nest/**/test/**/*.{ts,tsx}'],
+    extends: [tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+      sourceType: 'commonjs',
+      parserOptions: {
+        projectService: true,
+      },
     },
   },
 
