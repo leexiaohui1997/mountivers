@@ -1,5 +1,7 @@
 import js from '@eslint/js'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import nextVitals from 'eslint-config-next/core-web-vitals'
+import nextTs from 'eslint-config-next/typescript'
 import eslintConfigPrettier from 'eslint-config-prettier'
 import importX from 'eslint-plugin-import-x'
 import reactHooks from 'eslint-plugin-react-hooks'
@@ -9,7 +11,15 @@ import tseslint from 'typescript-eslint'
 
 export default defineConfig([
   // 全局忽略
-  globalIgnores(['**/dist', '**/node_modules', '**/generated']),
+  globalIgnores([
+    '**/dist',
+    '**/node_modules',
+    '**/generated',
+    '**/.next',
+    '**/out',
+    '**/build',
+    '**/next-env.d.ts',
+  ]),
 
   // 所有 JS 文件的基线规则
   {
@@ -75,6 +85,17 @@ export default defineConfig([
       sourceType: 'commonjs',
       parserOptions: {
         projectService: true,
+      },
+    },
+  },
+
+  // next 包的专属规则
+  {
+    files: ['next/**/*.{ts,tsx}'],
+    extends: [...nextVitals, ...nextTs],
+    settings: {
+      next: {
+        rootDir: 'next/*',
       },
     },
   },

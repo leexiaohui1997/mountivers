@@ -1,7 +1,9 @@
 packages:
   - 'apps/*'
   - 'nest/*'
+  - 'next/*'
   - 'services/*'
   - 'packages/*'
 allowBuilds:
+  sharp: true
   unrs-resolver: true
