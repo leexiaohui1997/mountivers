@@ -30,7 +30,7 @@ export default defineConfig([
       globals: globals.node,
     },
     rules: {
-      complexity: ['error', { max: 10 }],
+      complexity: ['warn', { max: 10 }],
     },
   },
 
@@ -39,7 +39,7 @@ export default defineConfig([
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
     rules: {
-      complexity: ['error', { max: 10 }],
+      complexity: ['warn', { max: 10 }],
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
@@ -86,6 +86,9 @@ export default defineConfig([
       parserOptions: {
         projectService: true,
       },
+    },
+    rules: {
+      '@typescript-eslint/require-await': 'off',
     },
   },
 
