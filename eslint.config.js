@@ -71,6 +71,9 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
   },
 
   // nest 包的专属规则
