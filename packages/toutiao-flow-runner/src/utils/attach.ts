@@ -1,0 +1,60 @@
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+
+export type FileAttach = {
+  type: 'file'
+  path: string
+}
+
+export type MarkdownAttach = {
+  type: 'markdown'
+  filename: string
+  content: string
+}
+
+export type Attach = FileAttach | MarkdownAttach
+
+const MIME_MAP: Record<string, string> = {
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
+  '.txt': 'text/plain',
+  '.json': 'application/json',
+  '.json5': 'application/json',
+  '.csv': 'text/csv',
+  '.html': 'text/html',
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.epub': 'application/epub+zip',
+}
+
+function getMimeType(filename: string) {
+  return MIME_MAP[path.extname(filename).toLowerCase()] || 'application/octet-stream'
+}
+
+export async function attachToFile(attach: Attach): Promise<File> {
+  if (attach.type === 'markdown') {
+    return new File([attach.content], attach.filename, {
+      type: getMimeType(attach.filename),
+      lastModified: Date.now(),
+    })
+  }
+
+  const filePath = path.isAbsolute(attach.path)
+    ? attach.path
+    : path.resolve(process.cwd(), attach.path)
+
+  let content: Buffer
+  try {
+    content = await readFile(filePath)
+  } catch {
+    throw new Error(`附件文件不存在或无法读取：${filePath}`)
+  }
+
+  return new File([new Uint8Array(content)], path.basename(filePath), {
+    type: getMimeType(filePath),
+    lastModified: Date.now(),
+  })
+}

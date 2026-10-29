@@ -19,3 +19,5 @@ export const BROWSER_VIEWPORT_HEIGHT = Number(envVar('BROWSER_VIEWPORT_HEIGHT'))
 export const BROWSER_HEADLESS = envVar('BROWSER_HEADLESS') === 'true'
 
 export const DATABASE_URL = envVar('DATABASE_URL', true)
+
+export const TEMPLATE_DIR = resolve(here, '../../templates')
