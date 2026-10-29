@@ -105,9 +105,20 @@ export async function loadCommands(
     if (!cmds || cmds.size === 0) continue
 
     const path = group?.path ?? ''
-    const parent = path
-      ? (groups.get(path) ?? groups.set(path, program.command(path)).get(path)!)
-      : program
+    let parent: CommanderCommand
+    if (path) {
+      const existing = groups.get(path)
+      parent =
+        existing ??
+        (() => {
+          const cmd = program.command(path)
+          if (group?.description) cmd.description(group.description)
+          groups.set(path, cmd)
+          return cmd
+        })()
+    } else {
+      parent = program
+    }
 
     for (const [method, meta] of cmds) {
       applyCommand(parent, Cls, method, meta)

@@ -3,9 +3,10 @@ import { setGroup } from '../metadata.js'
 /**
  * 作用于「类」,声明其下的 @Command 方法挂载在哪个命令组。
  * @param path 分组路径。为空字符串或省略时,命令直接挂载到根。
+ * @param description 命令组的描述(显示在 help 中)。
  */
-export function CommandGroup(path = ''): ClassDecorator {
+export function CommandGroup(path = '', description?: string): ClassDecorator {
   return (target) => {
-    setGroup(target.prototype, { path })
+    setGroup(target.prototype, { path, description })
   }
 }

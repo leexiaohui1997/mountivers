@@ -90,9 +90,18 @@ importers:
 
   packages/toutiao-flow-cli:
     dependencies:
+      '@prisma/adapter-libsql':
+        specifier: ^7.10.0
+        version: 7.10.1
+      '@toutiao-flow/db':
+        specifier: workspace:*
+        version: link:../toutiao-flow-db
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
     devDependencies:
       tsx:
         specifier: ^4.23.15

@@ -49,6 +49,7 @@ export interface CommandOpts {
 
 export interface GroupMeta {
   path: string
+  description?: string
 }
 
 interface Pending {

@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "commander": "^15.0.0"
+    "@prisma/adapter-libsql": "^7.10.0",
+    "@toutiao-flow/db": "workspace:*",
+    "commander": "^15.0.0",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "tsx": "^4.23.15",
