@@ -1,0 +1,29 @@
+{
+  "name": "@toutiao-flow/db",
+  "private": true,
+  "main": "./generated/prisma/index.js",
+  "types": "./generated/prisma/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./generated/prisma/index.d.ts",
+      "import": "./generated/prisma/index.js",
+      "require": "./generated/prisma/index.js"
+    }
+  },
+  "scripts": {
+    "db:g": "prisma generate",
+    "db:m": "prisma migrate dev",
+    "db:d": "prisma migrate deploy",
+    "db:validate": "prisma validate",
+    "db:format": "prisma format",
+    "pre-commit": "pnpm run db:validate",
+    "lint-staged:format": "pnpm run db:format"
+  },
+  "dependencies": {
+    "@prisma/adapter-libsql": "^7.10.0",
+    "@prisma/client": "^7.8.0",
+    "@prisma/client-runtime-utils": "^7.8.0",
+    "dotenv": "^17.4.2",
+    "prisma": "^7.8.0"
+  }
+}
