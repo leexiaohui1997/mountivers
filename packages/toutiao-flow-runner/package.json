@@ -10,7 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "cron-parser": "^5.10.2"
+    "@prisma/adapter-libsql": "^7.10.0",
+    "@toutiao-flow/db": "workspace:*",
+    "cron-parser": "^5.10.2",
+    "dotenv": "^17.4.2",
+    "playwright": "^1.64.1"
   },
   "devDependencies": {
     "tsx": "^4.23.15",
