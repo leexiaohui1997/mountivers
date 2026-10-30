@@ -49,13 +49,22 @@ export default class BookOverview extends BaseRole {
       return
     }
 
-    await prisma.book.update({
-      where: { id: book.id },
-      data: {
-        overview: data,
-        sessionUrl: page.url(),
-        status: BookStatus.PROCESSING,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.book.update({
+        where: { id: book.id },
+        data: {
+          overview: data,
+          sessionUrl: page.url(),
+          status: BookStatus.PROCESSING,
+        },
+      })
+
+      await tx.article.createMany({
+        data: data.articlePlan.map((item) => ({
+          index: item.no,
+          bookId: book.id,
+        })),
+      })
     })
 
     console.log(
