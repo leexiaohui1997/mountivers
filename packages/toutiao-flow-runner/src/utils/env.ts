@@ -13,11 +13,11 @@ function envVar(name: string, required = false) {
   return v
 }
 
-export const BROWSER_DATA_DIR = envVar('BROWSER_DATA_DIR', true)
+export const BROWSER_DATA_DIR = envVar('BROWSER_DATA_DIR', true)!
 export const BROWSER_VIEWPORT_WIDTH = Number(envVar('BROWSER_VIEWPORT_WIDTH')) || 1280
 export const BROWSER_VIEWPORT_HEIGHT = Number(envVar('BROWSER_VIEWPORT_HEIGHT')) || 800
 export const BROWSER_HEADLESS = envVar('BROWSER_HEADLESS') === 'true'
 
-export const DATABASE_URL = envVar('DATABASE_URL', true)
+export const DATABASE_URL = envVar('DATABASE_URL', true)!
 
 export const TEMPLATE_DIR = resolve(here, '../../templates')

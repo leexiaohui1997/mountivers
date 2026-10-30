@@ -145,6 +145,9 @@ importers:
       ejs:
         specifier: ^7.0.1
         version: 7.0.2
+      marked:
+        specifier: ^18.1.2
+        version: 18.1.2
       playwright:
         specifier: ^1.64.1
         version: 1.64.1
@@ -2467,6 +2470,11 @@ packages:
   luxon@3.7.2:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
     engines: {node: '>=12'}
+
+  marked@18.1.2:
+    resolution: {integrity: sha512-DfOnvLAQ6WYeWxWO1u4RyFOeqyHup6dks5PPqnoFiooU7ipRvidO/2j8plhAHIiZg574E9ZlzSjUiPMLAzFkgg==}
+    engines: {node: '>= 20'}
+    hasBin: true
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -5655,6 +5663,8 @@ snapshots:
   lru.min@1.1.5: {}
 
   luxon@3.7.2: {}
+
+  marked@18.1.2: {}
 
   math-intrinsics@1.1.0: {}
 

@@ -20,6 +20,7 @@ export async function getContext() {
       acceptDownloads: true,
       viewport: { width: BROWSER_VIEWPORT_WIDTH, height: BROWSER_VIEWPORT_HEIGHT },
       args: ['--disable-blink-features=AutomationControlled'],
+      permissions: ['clipboard-read'],
     })
   }
   return context
