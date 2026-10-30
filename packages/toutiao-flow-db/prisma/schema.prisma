@@ -29,6 +29,7 @@ model Book {
   sessionUrl       String?
   toutiaoCoverPath String?
   xhsCoverPath     String?
+  tags             Json?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 }
