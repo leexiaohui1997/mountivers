@@ -1,8 +1,10 @@
 import path from 'node:path'
 
 import { Book, BookStatus } from '@toutiao-flow/db'
+import { Page } from 'playwright'
 
 import YuanBaoPage from '../browser-pages/yuanbao.js'
+import { isOverviewJson, OverviewJson } from '../types/overview.js'
 import { attachToFile } from '../utils/attach.js'
 import { getPage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
@@ -33,14 +35,35 @@ export default class BookOverview extends BaseRole {
 
   async generateOverview(book: Book) {
     const ext = path.extname(book.path)
+    const page = await getPage(book.id)
+    let data: OverviewJson | null = null
+
+    console.log(`[book-overview] 开始生成概览: ${book.path} (book.id=${book.id}, ext=${ext})`)
+
     if (['.pdf'].includes(ext)) {
-      await this.generateOverviewYuanbao(book)
+      data = await this.generateOverviewYuanbao(page, book)
+    }
+
+    if (!data) {
+      console.log(`[book-overview] 未生成概览(无可用生成器或不支持的文件类型): ${book.path}`)
       return
     }
+
+    await prisma.book.update({
+      where: { id: book.id },
+      data: {
+        overview: data,
+        sessionUrl: page.url(),
+        status: BookStatus.PROCESSING,
+      },
+    })
+
+    console.log(
+      `[book-overview] 概览已生成: 《${data.bookTitle}》 (book.id=${book.id}) → ${BookStatus.PROCESSING}`,
+    )
   }
 
-  async generateOverviewYuanbao(book: Book) {
-    const page = await getPage(book.id)
+  async generateOverviewYuanbao(page: Page, book: Book): Promise<OverviewJson> {
     const $page = new YuanBaoPage(page)
     await $page.newSession()
     await $page.clearEditor()
@@ -50,10 +73,32 @@ export default class BookOverview extends BaseRole {
     await $page.uploadFile(promptFile)
     await $page.input('按提示词为这本书编写概览 overview，以 json 代码块的格式回复')
     await $page.send()
-    const answer = await $page.getAnswer()
-    const overviewJson = extractJsonBlock(answer)
-    console.log('回复：')
-    console.log(overviewJson)
-    await new Promise((r) => setTimeout(r, 1500000))
+
+    let data: OverviewJson
+
+    while (true) {
+      const answer = await $page.getAnswer()
+      const overviewJson = extractJsonBlock(answer)
+      if (!overviewJson) {
+        await $page.clearEditor()
+        await $page.input('请以 json 代码块的格式回复')
+        await $page.send()
+        continue
+      }
+
+      let failReason = ''
+      const check = isOverviewJson(overviewJson, (reason) => (failReason = reason))
+      if (!check) {
+        await $page.clearEditor()
+        await $page.input(`json 格式错误，请调整：${failReason}`)
+        await $page.send()
+        continue
+      }
+
+      data = overviewJson
+      break
+    }
+
+    return data
   }
 }
