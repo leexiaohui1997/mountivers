@@ -6,7 +6,7 @@ import { Page } from 'playwright'
 import YuanBaoPage from '../browser-pages/yuanbao.js'
 import { isOverviewJson, OverviewJson } from '../types/overview.js'
 import { attachToFile } from '../utils/attach.js'
-import { getPage } from '../utils/browser.js'
+import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import { extractJsonBlock } from '../utils/markdown.js'
 import BaseRole from '../utils/role/base.js'
@@ -30,12 +30,16 @@ export default class BookOverview extends BaseRole {
       return
     }
 
-    await this.generateOverview(book)
+    const page = await getPage(book.id)
+    try {
+      await this.generateOverview(page, book)
+    } finally {
+      await releasePage(page)
+    }
   }
 
-  async generateOverview(book: Book) {
+  async generateOverview(page: Page, book: Book) {
     const ext = path.extname(book.path)
-    const page = await getPage(book.id)
     let data: OverviewJson | null = null
 
     console.log(`[book-overview] 开始生成概览: ${book.path} (book.id=${book.id}, ext=${ext})`)

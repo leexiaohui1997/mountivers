@@ -9,8 +9,9 @@ export default class YuanBaoPage {
   async ensureLogin() {
     const url = this.page.url()
     if (!url.startsWith(YUANBAO_URL)) {
-      await this.page.goto(YUANBAO_URL, { waitUntil: 'domcontentloaded' })
+      await this.page.goto(YUANBAO_URL)
     }
+    await this.page.waitForLoadState('domcontentloaded')
 
     while (true) {
       const avatarImg = this.page.locator('.yb-common-nav__ft__avatar .image-container img').first()
@@ -35,6 +36,7 @@ export default class YuanBaoPage {
   }
 
   async newSession() {
+    await this.page.bringToFront()
     await this.ensureLogin()
     const url = this.page.url()
     if (!url.startsWith(NEW_SESSION_URL)) {
@@ -43,14 +45,27 @@ export default class YuanBaoPage {
     await this.page.waitForLoadState('domcontentloaded')
   }
 
-  async uploadFile(file: File) {
+  async uploadFile(file: File, image = false) {
     const addToolsAction = this.page
       .locator('[data-new-input-card] [data-new-input-control="add-tools"]')
       .first()
     await addToolsAction.waitFor({ state: 'visible' })
     await addToolsAction.click()
     await this.page.waitForTimeout(300)
-    const trigger = this.page.locator('button[role="menuitem"]:has-text("本地文件")').first()
+    const trigger = this.page
+      .locator(`button[role="menuitem"]:has-text("${image ? '上传图片' : '本地文件'}")`)
+      .first()
+    await trigger.waitFor({ state: 'visible' })
+    const [chooser] = await Promise.all([this.page.waitForEvent('filechooser'), trigger.click()])
+    await chooser.setFiles({
+      name: file.name,
+      mimeType: file.type,
+      buffer: Buffer.from(await file.arrayBuffer()),
+    })
+  }
+
+  async uploadImage(file: File) {
+    const trigger = this.page.locator('[data-new-input-card] button[aria-label="上传图片"]').first()
     await trigger.waitFor({ state: 'visible' })
     const [chooser] = await Promise.all([this.page.waitForEvent('filechooser'), trigger.click()])
     await chooser.setFiles({
@@ -139,5 +154,69 @@ export default class YuanBaoPage {
       return await navigator.clipboard.readText()
     })
     return text
+  }
+
+  async getImageAnswer() {
+    const img = this.page
+      .locator('.agent-chat__list__content .agent-chat__list__item[data-conv-speaker="ai"]')
+      .last()
+      .locator('img.dic-card-item__img--loaded')
+      .first()
+    const failHint = this.page
+      .locator('.hyc-content-loading__text:has-text("图片生成失败")')
+      .first()
+
+    // 并行等两个结果，谁先到走谁的分支
+    await Promise.race([
+      img.waitFor({ state: 'visible', timeout: 0 }),
+      failHint.waitFor({ state: 'visible', timeout: 0 }),
+    ])
+
+    // 若失败提示先出现，抛错
+    if (await failHint.isVisible().catch(() => false)) {
+      const text = (await failHint.textContent().catch(() => '')) || ''
+      throw new Error(text.trim())
+    }
+
+    const url = await img.getAttribute('data-download-url')
+    if (!url) throw new Error('最新出图卡片 data-download-url 为空')
+    return url
+  }
+
+  async setImageMode() {
+    // 输入框操作区容器
+    const actions = this.page.locator('div[data-new-input-control="atomic-actions"]').first()
+    await actions.waitFor({ state: 'visible' })
+
+    // 直接有"AI 生图"按钮就点；没有则重查两次（首屏渲染慢时按钮会晚出现）
+    let directBtn = actions.locator('button[aria-label="AI 生图"]')
+    for (let i = 0; i < 3 && (await directBtn.count()) === 0; i++) {
+      await this.page.waitForTimeout(2000)
+      directBtn = actions.locator('button[aria-label="AI 生图"]')
+    }
+    if ((await directBtn.count()) > 0) {
+      await directBtn.first().click()
+    } else {
+      // 否则先点"工具"按钮，再在菜单里选"AI 生图"（点击失败则刷新重试一次）
+      const toolBtn = actions.locator('button[aria-label="工具"]').first()
+      try {
+        await toolBtn.click({ timeout: 10000 })
+      } catch {
+        console.log('[yuanbao] 工具按钮点击失败，刷新页面重试…')
+        await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 })
+        const actions2 = this.page.locator('div[data-new-input-control="atomic-actions"]').first()
+        await actions2.waitFor({ state: 'visible', timeout: 15000 })
+        await this.page.waitForTimeout(2000)
+        await actions2.locator('button[aria-label="工具"]').first().click({ timeout: 15000 })
+      }
+      const menuItem = this.page.locator('button[role="menuitem"][aria-label="AI 生图"]').first()
+      try {
+        await menuItem.waitFor({ state: 'visible', timeout: 5000 })
+      } catch {
+        throw new Error('✗ 工具菜单中未找到 AI 生图入口，请检查元宝页面或账号是否具备生图能力')
+      }
+      await menuItem.click()
+    }
+    await this.page.waitForTimeout(500)
   }
 }

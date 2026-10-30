@@ -21,3 +21,5 @@ export const BROWSER_HEADLESS = envVar('BROWSER_HEADLESS') === 'true'
 export const DATABASE_URL = envVar('DATABASE_URL', true)!
 
 export const TEMPLATE_DIR = resolve(here, '../../templates')
+
+export const IMAGE_DOWNLOAD_DIR = envVar('IMAGE_DOWNLOAD_DIR', true)!

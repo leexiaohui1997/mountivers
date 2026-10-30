@@ -1,5 +1,11 @@
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+
+export type UrlAttach = {
+  type: 'url'
+  path: string
+  filename?: string
+}
 
 export type FileAttach = {
   type: 'file'
@@ -12,7 +18,7 @@ export type MarkdownAttach = {
   content: string
 }
 
-export type Attach = FileAttach | MarkdownAttach
+export type Attach = FileAttach | MarkdownAttach | UrlAttach
 
 const MIME_MAP: Record<string, string> = {
   '.md': 'text/markdown',
@@ -42,6 +48,21 @@ export async function attachToFile(attach: Attach): Promise<File> {
     })
   }
 
+  if (attach.type === 'url') {
+    const res = await fetch(attach.path)
+    if (!res.ok) {
+      throw new Error(`附件 URL 下载失败 ${res.status}：${attach.path}`)
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    const filename =
+      attach.filename || decodeURIComponent(attach.path.split('/').pop() || 'download')
+    const contentType = res.headers.get('content-type') || getMimeType(filename)
+    return new File([new Uint8Array(buf)], filename, {
+      type: contentType,
+      lastModified: Date.now(),
+    })
+  }
+
   const filePath = path.isAbsolute(attach.path)
     ? attach.path
     : path.resolve(process.cwd(), attach.path)
@@ -57,4 +78,12 @@ export async function attachToFile(attach: Attach): Promise<File> {
     type: getMimeType(filePath),
     lastModified: Date.now(),
   })
+}
+
+export async function saveFile(file: File, outputPath: string) {
+  const dir = path.dirname(outputPath)
+  await mkdir(dir, { recursive: true })
+
+  const buf = Buffer.from(await file.arrayBuffer())
+  await writeFile(outputPath, buf)
 }
