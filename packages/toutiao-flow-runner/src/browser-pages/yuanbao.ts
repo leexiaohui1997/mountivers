@@ -35,12 +35,12 @@ export default class YuanBaoPage {
     }
   }
 
-  async newSession() {
+  async newSession(url?: string) {
     await this.page.bringToFront()
     await this.ensureLogin()
-    const url = this.page.url()
-    if (!url.startsWith(NEW_SESSION_URL)) {
-      await this.page.goto(NEW_SESSION_URL)
+    const target = url && url.startsWith(YUANBAO_URL) ? url : NEW_SESSION_URL
+    if (!this.page.url().startsWith(target)) {
+      await this.page.goto(target)
     }
     await this.page.waitForLoadState('domcontentloaded')
   }

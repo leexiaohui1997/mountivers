@@ -18,28 +18,31 @@ export function resolveFileName(name: string) {
   throw new Error(`模板 ${name} 不存在`)
 }
 
-export async function renderTemplate(name: string) {
+export async function renderTemplate(name: string, data: Record<string, unknown> = {}) {
   const filename = resolveFileName(name)
   const options: ejs.Options = {
     filename,
     cache: true,
     root: TEMPLATE_DIR,
     rmWhitespace: false,
-    _with: false,
-    destructuredLocals: [],
     async: true,
   }
-  return await ejs.renderFile(filename, {}, options)
+  return await ejs.renderFile(filename, data, options)
 }
 
 export async function renderToAttach(
   name: string,
-  filename = path.basename(resolveFileName(name)),
+  dataOrFilename: Record<string, unknown> | string = {},
+  filename?: string,
 ): Promise<File> {
-  const content = await renderTemplate(name)
+  const data = typeof dataOrFilename === 'string' ? {} : dataOrFilename
+  const finalFilename =
+    filename ??
+    (typeof dataOrFilename === 'string' ? dataOrFilename : path.basename(resolveFileName(name)))
+  const content = await renderTemplate(name, data)
   return await attachToFile({
     type: 'markdown',
-    filename,
+    filename: finalFilename,
     content,
   })
 }
