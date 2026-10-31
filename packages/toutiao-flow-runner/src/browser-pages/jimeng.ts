@@ -26,9 +26,26 @@ export async function readJimengCredit(page: Page): Promise<number | null> {
   return Number.isFinite(value) ? value : null
 }
 
+/** 即梦积分不足，调用方应切换到其他引擎 */
+export class JimengCreditError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'JimengCreditError'
+  }
+}
+
+export interface JimengGenerateResult {
+  /** 出图文件 */
+  file: File
+  /** 生成前实时读取到的剩余积分（页面未展示时为 null） */
+  creditBefore: number | null
+  /** 生成完成后实时读取到的剩余积分（页面未展示时为 null） */
+  creditAfter: number | null
+}
+
 /**
  * 即梦生图引擎（移植老项目 src/commands/jimeng/image.ts）。
- * 只负责“出图并返回 File”，质检与引擎切换在 image-runner 中完成。
+ * 只负责“出图并返回 File 与实时积分”，质检与引擎切换在 image-runner 中完成。
  */
 export default class JimengPage {
   constructor(public page: Page) {}
@@ -48,22 +65,32 @@ export default class JimengPage {
     }
   }
 
-  /** 在当前页面读取剩余积分；一直等待积分元素出现 */
-  async readCredit(): Promise<number | null> {
+  /** 读取当前页面展示的剩余积分；积分元素在超时内未出现则返回 null */
+  async readCredit(timeoutMs = 10000): Promise<number | null> {
     const element = this.page.locator(CREDIT_SELECTOR).first()
-    // timeout: 0 表示不设超时，积分元素不出现就一直等
-    await element.waitFor({ state: 'visible', timeout: 0 })
-    await this.page.waitForTimeout(500)
+    const visible = await element
+      .waitFor({ state: 'visible', timeout: timeoutMs })
+      .then(() => true)
+      .catch(() => false)
+    if (!visible) return null
+
+    await this.page.waitForTimeout(300)
     return await readJimengCredit(this.page)
   }
 
   /**
-   * 生成一张图片并返回文件。
-   * 每次生成都会重新打开首页并重新配置模式/模型/参数，避免状态残留。
+   * 生成一张图片并返回文件与实时积分。
+   * 每次生成都会重新打开首页并重新配置模式/模型/参数，避免状态残留；
+   * 提交前会实时读取页面积分并校验，不足时抛 JimengCreditError（不消耗额度）。
    */
-  async generate(prompt: string, referencePath?: string | null): Promise<File> {
+  async generate(prompt: string, referencePath?: string | null): Promise<JimengGenerateResult> {
     await this.page.goto(JIMENG_HOME_URL, { waitUntil: 'domcontentloaded', timeout: 30000 })
     await this.page.waitForTimeout(1500)
+
+    const creditBefore = await this.readCredit()
+    if (creditBefore !== null && creditBefore <= 0) {
+      throw new JimengCreditError(`即梦剩余积分不足：${creditBefore}`)
+    }
 
     const editor = this.page.locator(PROMPT_EDITOR_SELECTOR).first()
     await editor.waitFor({ state: 'visible', timeout: 30000 })
@@ -83,8 +110,12 @@ export default class JimengPage {
     await this.clickSubmit()
     await this.waitForGenerationComplete()
 
+    // 生成完成后、打开预览图之前读取积分，避免预览层遮挡积分元素
+    const creditAfter = await this.readCredit(5000)
+
     const src = await this.getLatestGeneratedImageSrc()
-    return await attachToFile({ type: 'url', path: src, filename: 'image.png' })
+    const file = await attachToFile({ type: 'url', path: src, filename: 'image.png' })
+    return { file, creditBefore, creditAfter }
   }
 
   private async fillPrompt(prompt: string): Promise<void> {

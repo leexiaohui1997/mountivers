@@ -11,11 +11,13 @@ import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import { extractJsonBlock } from '../utils/markdown.js'
 import BaseRole from '../utils/role/base.js'
+import { ROLE_PRIORITY } from '../utils/role-priority.js'
 import { renderToAttach } from '../utils/template.js'
 
 export default class BookOverview extends BaseRole {
   cron = '* * * * * ?'
   waitPrevious = true
+  priority = ROLE_PRIORITY.BOOK_OVERVIEW
 
   async run(): Promise<void> {
     const book = await prisma.book.findFirst({
@@ -32,14 +34,18 @@ export default class BookOverview extends BaseRole {
     }
 
     // 浏览器是共享单例：整段页面流程作为一个任务串行执行
-    await browserQueue.run(`book-overview:${book.id}`, async () => {
-      const page = await getPage(book.id)
-      try {
-        await this.generateOverview(page, book)
-      } finally {
-        await releasePage(page)
-      }
-    })
+    await browserQueue.run(
+      `book-overview:${book.id}`,
+      async () => {
+        const page = await getPage(book.id)
+        try {
+          await this.generateOverview(page, book)
+        } finally {
+          await releasePage(page)
+        }
+      },
+      this.priority,
+    )
   }
 
   async generateOverview(page: Page, book: Book) {

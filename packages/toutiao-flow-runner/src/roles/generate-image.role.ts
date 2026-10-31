@@ -8,19 +8,25 @@ import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
 import { runImageTasks, type ImageTask } from '../utils/image-runner.js'
 import BaseRole from '../utils/role/base.js'
+import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
 export default class GenerateImageRole extends BaseRole {
   cron = '* * * * * ?'
   waitPrevious = true
+  priority = ROLE_PRIORITY.COVER_IMAGE
 
   async run(): Promise<void> {
     const tasks = await this.getBookSchedule()
     if (!tasks.length) return
 
     // 浏览器是共享单例：整段页面流程作为一个任务串行执行
-    await browserQueue.run(`generate-image:${tasks.length}`, async () => {
-      await runImageTasks(tasks)
-    })
+    await browserQueue.run(
+      `generate-image:${tasks.length}`,
+      async () => {
+        await runImageTasks(tasks)
+      },
+      this.priority,
+    )
   }
 
   async getBookSchedule(): Promise<ImageTask[]> {

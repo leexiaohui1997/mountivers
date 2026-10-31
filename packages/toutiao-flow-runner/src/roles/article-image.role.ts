@@ -15,6 +15,7 @@ import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
 import { runImageTasks, type ImageTask, type ImageTaskResult } from '../utils/image-runner.js'
 import BaseRole from '../utils/role/base.js'
+import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
 type ArticleWithBook = Article & { book: Book }
 
@@ -29,6 +30,7 @@ interface ArticleDataState {
 export default class ArticleImageRole extends BaseRole {
   cron = '* * * * * ?'
   waitPrevious = true
+  priority = ROLE_PRIORITY.ARTICLE_IMAGE
 
   async run(): Promise<void> {
     const article = await prisma.article.findFirst({
@@ -80,9 +82,13 @@ export default class ArticleImageRole extends BaseRole {
 
     let results: ImageTaskResult[]
     try {
-      results = await browserQueue.run(`article-images:${book.id}:${article.index}`, async () => {
-        return await runImageTasks(tasks)
-      })
+      results = await browserQueue.run(
+        `article-images:${book.id}:${article.index}`,
+        async () => {
+          return await runImageTasks(tasks)
+        },
+        this.priority,
+      )
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[article-image] 生成异常: book.id=${book.id}, 第${article.index}篇: ${reason}`)

@@ -13,6 +13,7 @@ import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import { extractJsonBlock } from '../utils/markdown.js'
 import BaseRole from '../utils/role/base.js'
+import { ROLE_PRIORITY } from '../utils/role-priority.js'
 import { renderTemplate, renderToAttach } from '../utils/template.js'
 import { WORD_THRESHOLD } from '../utils/word-count.js'
 
@@ -29,6 +30,7 @@ interface GenerateState {
 export default class ArticleRole extends BaseRole {
   cron = '* * * * * ?'
   waitPrevious = true
+  priority = ROLE_PRIORITY.ARTICLE
 
   async run(): Promise<void> {
     const article = await prisma.article.findFirst({
@@ -67,14 +69,18 @@ export default class ArticleRole extends BaseRole {
     const state: GenerateState = { attempts }
 
     try {
-      await browserQueue.run(`article:${book.id}:${article.index}`, async () => {
-        const page = await getPage(ARTICLE_PAGE_ID)
-        try {
-          await this.generateArticle(page, article, book, overview, state)
-        } finally {
-          await releasePage(page)
-        }
-      })
+      await browserQueue.run(
+        `article:${book.id}:${article.index}`,
+        async () => {
+          const page = await getPage(ARTICLE_PAGE_ID)
+          try {
+            await this.generateArticle(page, article, book, overview, state)
+          } finally {
+            await releasePage(page)
+          }
+        },
+        this.priority,
+      )
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[article] 生成异常: book.id=${book.id}, 第${article.index}篇: ${reason}`)

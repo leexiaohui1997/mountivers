@@ -19,6 +19,7 @@ import {
   setPublishLimitUntil,
 } from '../utils/publish-limit.js'
 import BaseRole from '../utils/role/base.js'
+import { ROLE_PRIORITY } from '../utils/role-priority.js'
 import { mergePublishTags } from '../utils/tags.js'
 import { countWords, WORD_THRESHOLD } from '../utils/word-count.js'
 
@@ -39,7 +40,7 @@ let lastLimitLogKey: string | null = null
 export default class ArticlePublishRole extends BaseRole {
   cron = '* * * * * ?'
   waitPrevious = true
-  priority = 1
+  priority = ROLE_PRIORITY.PUBLISH
 
   async run(): Promise<void> {
     const limitUntil = await getPublishLimitUntil()
@@ -117,30 +118,34 @@ export default class ArticlePublishRole extends BaseRole {
 
     let alreadyPublished = false
     try {
-      await browserQueue.run(`publish:${book.id}:${article.index}`, async () => {
-        const page = await getPage(PUBLISH_PAGE_ID)
-        try {
-          const $toutiao = new ToutiaoPage(page)
-          await $toutiao.ensureLogin()
+      await browserQueue.run(
+        `publish:${book.id}:${article.index}`,
+        async () => {
+          const page = await getPage(PUBLISH_PAGE_ID)
+          try {
+            const $toutiao = new ToutiaoPage(page)
+            await $toutiao.ensureLogin()
 
-          const $publish = new ToutiaoPublishPage(page)
-          if (await $publish.hasPublishedArticle(title)) {
-            alreadyPublished = true
-            console.log(`[article-publish] 作品管理页已存在《${title}》，跳过重复发布`)
-            return
+            const $publish = new ToutiaoPublishPage(page)
+            if (await $publish.hasPublishedArticle(title)) {
+              alreadyPublished = true
+              console.log(`[article-publish] 作品管理页已存在《${title}》，跳过重复发布`)
+              return
+            }
+
+            await $publish.publishArticle({
+              title,
+              coverPath: data.cover!,
+              collectionName,
+              content,
+              tags,
+            })
+          } finally {
+            await releasePage(page)
           }
-
-          await $publish.publishArticle({
-            title,
-            coverPath: data.cover!,
-            collectionName,
-            content,
-            tags,
-          })
-        } finally {
-          await releasePage(page)
-        }
-      })
+        },
+        this.priority,
+      )
     } catch (error) {
       if (error instanceof PublishLimitError) {
         const until = getNextLocalMidnight()

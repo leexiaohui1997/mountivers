@@ -2,6 +2,7 @@ import ToutiaoPage from '../browser-pages/toutiao.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import BaseRole from '../utils/role/base.js'
+import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
 const DRAFT_PAGE_ID = 'toutiao-drafts'
 
@@ -9,22 +10,27 @@ const DRAFT_PAGE_ID = 'toutiao-drafts'
 export default class DeleteDraftsRole extends BaseRole {
   cron = '0 0 * * * ?'
   waitPrevious = true
+  priority = ROLE_PRIORITY.HOUSEKEEPING
 
   async run(): Promise<void> {
     try {
-      await browserQueue.run('delete-drafts', async () => {
-        const page = await getPage(DRAFT_PAGE_ID)
-        try {
-          const $page = new ToutiaoPage(page)
-          await $page.ensureLogin()
-          await $page.openDraftPage()
+      await browserQueue.run(
+        'delete-drafts',
+        async () => {
+          const page = await getPage(DRAFT_PAGE_ID)
+          try {
+            const $page = new ToutiaoPage(page)
+            await $page.ensureLogin()
+            await $page.openDraftPage()
 
-          const count = await $page.deleteAllDrafts()
-          console.log(`[delete-drafts] 清理完成，共删除 ${count} 条草稿`)
-        } finally {
-          await releasePage(page)
-        }
-      })
+            const count = await $page.deleteAllDrafts()
+            console.log(`[delete-drafts] 清理完成，共删除 ${count} 条草稿`)
+          } finally {
+            await releasePage(page)
+          }
+        },
+        this.priority,
+      )
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[delete-drafts] 清理失败: ${reason}`)

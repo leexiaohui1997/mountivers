@@ -8,6 +8,7 @@ import { browserQueue } from '../utils/browser-queue.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
+import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
 /** 头条合集创建失败上限；达到后跳过，等待人工重置 */
 const MAX_ATTEMPTS = 3
@@ -27,6 +28,7 @@ const warnedMissingCover = new Set<string>()
 export default class BookCollectionRole extends BaseRole {
   cron = '* * * * * ?'
   waitPrevious = true
+  priority = ROLE_PRIORITY.COLLECTION
 
   async run(): Promise<void> {
     const book = await prisma.book.findFirst({
@@ -74,16 +76,20 @@ export default class BookCollectionRole extends BaseRole {
     console.log(`[book-collection] 开始: book.id=${book.id}, 合集=《${name}》`)
 
     try {
-      await browserQueue.run(`book-collection:${book.id}`, async () => {
-        const page = await getPage(COLLECTION_PAGE_ID)
-        try {
-          const $page = new ToutiaoPage(page)
-          await $page.ensureLogin()
-          await $page.ensureCollection(name, coverPath)
-        } finally {
-          await releasePage(page)
-        }
-      })
+      await browserQueue.run(
+        `book-collection:${book.id}`,
+        async () => {
+          const page = await getPage(COLLECTION_PAGE_ID)
+          try {
+            const $page = new ToutiaoPage(page)
+            await $page.ensureLogin()
+            await $page.ensureCollection(name, coverPath)
+          } finally {
+            await releasePage(page)
+          }
+        },
+        this.priority,
+      )
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[book-collection] 创建失败: book.id=${book.id}: ${reason}`)
