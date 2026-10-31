@@ -6,6 +6,7 @@ import { Page } from 'playwright'
 import YuanBaoPage from '../browser-pages/yuanbao.js'
 import { isOverviewJson, OverviewJson } from '../types/overview.js'
 import { attachToFile } from '../utils/attach.js'
+import { browserQueue } from '../utils/browser-queue.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import { extractJsonBlock } from '../utils/markdown.js'
@@ -30,12 +31,15 @@ export default class BookOverview extends BaseRole {
       return
     }
 
-    const page = await getPage(book.id)
-    try {
-      await this.generateOverview(page, book)
-    } finally {
-      await releasePage(page)
-    }
+    // 浏览器是共享单例：整段页面流程作为一个任务串行执行
+    await browserQueue.run(`book-overview:${book.id}`, async () => {
+      const page = await getPage(book.id)
+      try {
+        await this.generateOverview(page, book)
+      } finally {
+        await releasePage(page)
+      }
+    })
   }
 
   async generateOverview(page: Page, book: Book) {

@@ -68,7 +68,8 @@ export async function runRoles(opts?: {
 
   scheduler.init(roles, clock())
   while (!opts?.signal?.aborted) {
-    await scheduler.tick(roles, clock())
+    // tick 只负责启动到点角色，不等待 run 结束：不同角色并行，长任务不阻塞后续 tick
+    scheduler.tick(roles, clock())
     if (opts?.signal?.aborted) break
     try {
       await sleep(tickMs, opts?.signal)

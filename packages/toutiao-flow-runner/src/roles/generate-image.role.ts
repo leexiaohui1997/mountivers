@@ -10,6 +10,7 @@ import { isCheckJson, type CheckJson } from '../types/check.js'
 import { isFixPromptJson } from '../types/fix-prompt.js'
 import { isOverviewJson } from '../types/overview.js'
 import { attachToFile, saveFile } from '../utils/attach.js'
+import { browserQueue } from '../utils/browser-queue.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
@@ -18,6 +19,7 @@ import BaseRole from '../utils/role/base.js'
 import { renderTemplate } from '../utils/template.js'
 
 type Task = {
+  bookId: string
   prompt: () => string
   attachPath?: () => string | null
   /** 修词会话 URL(通常为 Book 的 sessionUrl);缺省用元宝默认新会话 */
@@ -35,7 +37,14 @@ export default class GenerateImageRole extends BaseRole {
   async run(): Promise<void> {
     const tasks: Task[] = [...(await this.getBookSchedule()), ...(await this.getArticleSchedule())]
     if (!tasks.length) return
-    await this.generateImageYuanbao(tasks)
+
+    // 浏览器是共享单例：整段页面流程作为一个任务串行执行
+    // 标签带上涉及的书目，便于日志定位是哪些 book 占用了队列
+    const bookIds = [...new Set(tasks.map((task) => task.bookId))]
+    const label = `generate-image:${bookIds.join(',') || `${tasks.length} tasks`}`
+    await browserQueue.run(label, async () => {
+      await this.generateImageYuanbao(tasks)
+    })
   }
 
   async getBookSchedule(): Promise<Task[]> {
@@ -58,6 +67,7 @@ export default class GenerateImageRole extends BaseRole {
 
       if (!book.toutiaoCoverPath) {
         tasks.push({
+          bookId: book.id,
           prompt: () => overview.collectionCoverPrompt,
           sessionUrl: () => book.sessionUrl,
           onPromptFixed: async (fixedPrompt) => {
@@ -83,6 +93,7 @@ export default class GenerateImageRole extends BaseRole {
 
       if (!book.xhsCoverPath) {
         tasks.push({
+          bookId: book.id,
           prompt: () => overview.xhsCollectionCoverPrompt,
           attachPath: () => toutiaoCoverPath,
           sessionUrl: () => book.sessionUrl,
@@ -206,7 +217,7 @@ export default class GenerateImageRole extends BaseRole {
 
           if (check.pass) {
             passed = true
-            outputPath = path.resolve(IMAGE_DOWNLOAD_DIR, `${randomUUID()}.png`)
+            outputPath = path.resolve(IMAGE_DOWNLOAD_DIR, `${task.bookId}/${randomUUID()}.png`)
             await saveFile(file, outputPath)
             break
           }
@@ -236,6 +247,8 @@ export default class GenerateImageRole extends BaseRole {
   /**
    * 违规提示词改写:复用 Book 的元宝会话(缺省用默认会话),
    * 让 AI 改写规避违规表述,返回改写后的提示词文本。
+   * 格式不合法时纠正重发,持续重试直到拿到合法 JSON(不设重试上限),
+   * 因此调用期间会一直占用 browserQueue 的槽位。
    */
   async fixPrompt(
     $fixPage: YuanBaoPage,
@@ -244,19 +257,16 @@ export default class GenerateImageRole extends BaseRole {
   ): Promise<string> {
     await $fixPage.newSession(sessionUrl ?? undefined)
     await $fixPage.clearEditor()
+    await $fixPage.input(await renderTemplate('fix-prompt.prompt', { prompt }))
+    await $fixPage.send()
 
-    let reTryTimes = 0
-    while (reTryTimes < 3) {
-      await $fixPage.input(await renderTemplate('fix-prompt.prompt', { prompt }))
-      await $fixPage.send()
-
+    while (true) {
       const answer = await $fixPage.getAnswer()
       const json = extractJsonBlock(answer)
       if (!json) {
         await $fixPage.clearEditor()
         await $fixPage.input('请以 json 代码块的格式回复')
         await $fixPage.send()
-        reTryTimes++
         continue
       }
 
@@ -268,22 +278,18 @@ export default class GenerateImageRole extends BaseRole {
       await $fixPage.clearEditor()
       await $fixPage.input(`json 格式错误，请调整：${failReason}`)
       await $fixPage.send()
-      reTryTimes++
     }
-
-    throw new Error('修词失败：AI 连续 3 次未返回有效提示词 JSON')
   }
 
   /** 图片质量校验:上传图片 + 渲染后的校验提示词,循环直至拿到合法 check.json */
   async checkImage($checkPage: YuanBaoPage, file: File, prompt: string): Promise<CheckJson> {
     await $checkPage.newSession()
     await $checkPage.clearEditor()
+    await $checkPage.uploadFile(file, true)
+    await $checkPage.input(await renderTemplate('image-check.prompt', { prompt }))
+    await $checkPage.send()
 
     while (true) {
-      await $checkPage.uploadFile(file, true)
-      await $checkPage.input(await renderTemplate('image-check.prompt', { prompt }))
-      await $checkPage.send()
-
       const answer = await $checkPage.getAnswer()
       const json = extractJsonBlock(answer)
       if (!json) {

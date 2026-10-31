@@ -69,7 +69,7 @@ export default class ToutiaoPage {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     })
-    await this.page.waitForTimeout(3000)
+    await this.page.waitForTimeout(1000)
     await this.hideMasks()
   }
 
@@ -97,7 +97,7 @@ export default class ToutiaoPage {
     await this.focusEditor()
     // 必须逐字 type,insertText 不触发 # 的话题监听
     await this.page.keyboard.type(`#${keyword}`, { delay: 80 })
-    await this.page.waitForTimeout(6000)
+    await this.page.waitForTimeout(1000)
 
     const items: TopicItem[] = await this.page.evaluate(() => {
       return (
@@ -114,7 +114,7 @@ export default class ToutiaoPage {
 
     // 收集完成后刷新重置,下一轮输入不受本轮残留干扰
     await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 })
-    await this.page.waitForTimeout(3000)
+    await this.page.waitForTimeout(300)
     await this.hideMasks()
 
     if (!items.length) return []
