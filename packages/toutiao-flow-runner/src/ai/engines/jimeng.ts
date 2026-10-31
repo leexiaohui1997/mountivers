@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs'
 import { extname } from 'node:path'
 
-import { attachToFile } from '../utils/attach.js'
+import { activatePage } from '../../utils/browser.js'
+import { AiPage } from '../types.js'
 
-import type { Locator, Page } from 'playwright'
+import type { Locator } from 'playwright'
 
 const JIMENG_HOME_URL = 'https://jimeng.jianying.com/ai-tool/home'
 const PROMPT_EDITOR_SELECTOR = '[class^="prompt-editor-"] .tiptap[contenteditable="true"]'
@@ -14,18 +14,6 @@ const REFERENCE_GROUP_SELECTOR = '[class*="reference-group-content-"]'
 const AVATAR_SELECTOR = '[class^="avatar-action-shell-"]'
 const CREDIT_SELECTOR = '[class^="credit-amount-text-"]'
 
-/** 读取即梦页面上的今日剩余积分；找不到返回 null */
-export async function readJimengCredit(page: Page): Promise<number | null> {
-  const element = page.locator(CREDIT_SELECTOR).first()
-  if ((await element.count()) === 0) return null
-
-  const text = (await element.textContent())?.trim()
-  if (!text) return null
-
-  const value = Number(text.replace(/[^0-9.]/g, ''))
-  return Number.isFinite(value) ? value : null
-}
-
 /** 即梦积分不足，调用方应切换到其他引擎 */
 export class JimengCreditError extends Error {
   constructor(message: string) {
@@ -34,24 +22,18 @@ export class JimengCreditError extends Error {
   }
 }
 
-export interface JimengGenerateResult {
-  /** 出图文件 */
-  file: File
-  /** 生成前实时读取到的剩余积分（页面未展示时为 null） */
-  creditBefore: number | null
-  /** 生成完成后实时读取到的剩余积分（页面未展示时为 null） */
-  creditAfter: number | null
-}
-
 /**
- * 即梦生图引擎（移植老项目 src/commands/jimeng/image.ts）。
- * 只负责“出图并返回 File 与实时积分”，质检与引擎切换在 image-runner 中完成。
+ * 即梦引擎：基于 Playwright Page 直接实现 AiPage。
+ * 当前只支持文生图；文本生成相关方法为空实现。
  */
-export default class JimengPage {
-  constructor(public page: Page) {}
+export default class JimengAiPageEngine extends AiPage {
+  /** 本次提交前读取到的积分 */
+  lastCreditBefore: number | null = null
+  /** 本次生成完成后、打开预览图前读取到的积分 */
+  lastCreditAfter: number | null = null
 
-  /** 确保已登录即梦（未登录则阻塞等待扫码） */
   async ensureLogin(): Promise<void> {
+    await this.ensurePage()
     await this.page.goto(JIMENG_HOME_URL, { waitUntil: 'domcontentloaded', timeout: 30000 })
     await this.page.waitForTimeout(3000)
 
@@ -65,33 +47,26 @@ export default class JimengPage {
     }
   }
 
-  /** 读取当前页面展示的剩余积分；积分元素在超时内未出现则返回 null */
-  async readCredit(timeoutMs = 10000): Promise<number | null> {
-    const element = this.page.locator(CREDIT_SELECTOR).first()
-    const visible = await element
-      .waitFor({ state: 'visible', timeout: timeoutMs })
-      .then(() => true)
-      .catch(() => false)
-    if (!visible) return null
+  async openSession(url?: string): Promise<void> {
+    await this.ensurePage()
+    await activatePage(this.page)
+    await this.ensureLogin()
 
-    await this.page.waitForTimeout(300)
-    return await readJimengCredit(this.page)
-  }
-
-  /**
-   * 生成一张图片并返回文件与实时积分。
-   * 每次生成都会重新打开首页并重新配置模式/模型/参数，避免状态残留；
-   * 提交前会实时读取页面积分并校验，不足时抛 JimengCreditError（不消耗额度）。
-   */
-  async generate(prompt: string, referencePath?: string | null): Promise<JimengGenerateResult> {
-    await this.page.goto(JIMENG_HOME_URL, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    await this.page.waitForTimeout(1500)
-
-    const creditBefore = await this.readCredit()
-    if (creditBefore !== null && creditBefore <= 0) {
-      throw new JimengCreditError(`即梦剩余积分不足：${creditBefore}`)
+    const target = url && url.startsWith('https://jimeng.jianying.com') ? url : JIMENG_HOME_URL
+    if (this.page.url() !== target) {
+      await this.page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 })
     }
 
+    await this.page.waitForTimeout(1500)
+    await this.page.locator(PROMPT_EDITOR_SELECTOR).first().waitFor({
+      state: 'visible',
+      timeout: 30000,
+    })
+  }
+
+  /** 选择图片生成模式、模型和参数 */
+  async setImageMode(): Promise<void> {
+    await this.ensurePage()
     const editor = this.page.locator(PROMPT_EDITOR_SELECTOR).first()
     await editor.waitFor({ state: 'visible', timeout: 30000 })
     await this.dismissModals()
@@ -101,21 +76,113 @@ export default class JimengPage {
     await this.openModeSelector()
     await this.selectModel()
     await this.configureImageSettings()
+  }
 
-    if (referencePath) {
-      await this.uploadReferenceImage(referencePath)
+  async clearEditor(): Promise<void> {
+    await this.ensurePage()
+    await this.fillPrompt('')
+  }
+
+  /** 文本生成暂不支持 */
+  async uploadFile(): Promise<void> {
+    return
+  }
+
+  async uploadImage(file: File): Promise<void> {
+    await this.ensurePage()
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const base64 = buffer.toString('base64')
+    const ext = extname(file.name).toLowerCase()
+    const mime =
+      file.type ||
+      (ext === '.jpg' || ext === '.jpeg'
+        ? 'image/jpeg'
+        : ext === '.webp'
+          ? 'image/webp'
+          : 'image/png')
+
+    await this.page.evaluate(
+      async (payload: { base64: string; name: string; type: string }) => {
+        const binary = atob(payload.base64)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+        const imageFile = new File([bytes], payload.name, { type: payload.type })
+        const dataTransfer = new DataTransfer()
+        dataTransfer.items.add(imageFile)
+
+        const target =
+          (document.querySelector('[class*="reference-group-content-"]') as HTMLElement | null) ??
+          (document.querySelector('[class*="reference-group-"]') as HTMLElement | null)
+        if (!target) throw new Error('未找到即梦参考图上传容器')
+
+        const options: DragEventInit = {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }
+        target.dispatchEvent(new DragEvent('dragenter', options))
+        target.dispatchEvent(new DragEvent('dragover', options))
+        target.dispatchEvent(new DragEvent('drop', options))
+      },
+      { base64, name: file.name, type: mime },
+    )
+
+    await this.page
+      .locator(`${REFERENCE_GROUP_SELECTOR} img[src^="blob:"]`)
+      .first()
+      .waitFor({ state: 'visible', timeout: 30000 })
+    await this.page.waitForTimeout(3000)
+  }
+
+  async input(text: string): Promise<void> {
+    await this.ensurePage()
+    await this.fillPrompt(text)
+  }
+
+  async send(): Promise<void> {
+    await this.ensurePage()
+    this.lastCreditBefore = null
+    this.lastCreditAfter = null
+
+    const credit = await this.readCredit(5000)
+    this.lastCreditBefore = credit
+    if (credit !== null && credit <= 0) {
+      throw new JimengCreditError(`即梦剩余积分不足：${credit}`)
     }
-
-    await this.fillPrompt(prompt)
     await this.clickSubmit()
+  }
+
+  /** 文本生成暂不支持 */
+  async getAnswer(): Promise<string> {
+    return ''
+  }
+
+  async getImageAnswer(): Promise<string> {
+    await this.ensurePage()
     await this.waitForGenerationComplete()
 
-    // 生成完成后、打开预览图之前读取积分，避免预览层遮挡积分元素
-    const creditAfter = await this.readCredit(5000)
+    // 必须在打开预览图前读积分，预览层会遮挡积分元素
+    this.lastCreditAfter = await this.readCredit(5000)
+    return await this.getLatestGeneratedImageSrc()
+  }
 
-    const src = await this.getLatestGeneratedImageSrc()
-    const file = await attachToFile({ type: 'url', path: src, filename: 'image.png' })
-    return { file, creditBefore, creditAfter }
+  /** 读取当前页面展示的剩余积分；积分元素在超时内未出现则返回 null */
+  async readCredit(timeoutMs = 10000): Promise<number | null> {
+    await this.ensurePage()
+    const element = this.page.locator(CREDIT_SELECTOR).first()
+    const visible = await element
+      .waitFor({ state: 'visible', timeout: timeoutMs })
+      .then(() => true)
+      .catch(() => false)
+    if (!visible) return null
+
+    await this.page.waitForTimeout(300)
+    const text = (await element.textContent())?.trim()
+    if (!text) return null
+
+    const value = Number(text.replace(/[^0-9.]/g, ''))
+    return Number.isFinite(value) ? value : null
   }
 
   private async fillPrompt(prompt: string): Promise<void> {
@@ -129,7 +196,9 @@ export default class JimengPage {
     })
     await this.page.waitForTimeout(200)
 
-    await this.page.keyboard.insertText(prompt)
+    if (prompt) {
+      await this.page.keyboard.insertText(prompt)
+    }
     await this.page.waitForTimeout(500)
   }
 
@@ -173,51 +242,6 @@ export default class JimengPage {
     const src = await zoomImage.getAttribute('src')
     if (!src) throw new Error('即梦高清图 src 为空')
     return src
-  }
-
-  /** 通过 DataTransfer 拖拽上传参考图（即梦无 file input） */
-  private async uploadReferenceImage(referencePath: string): Promise<void> {
-    const buffer = readFileSync(referencePath)
-    const extension = extname(referencePath).toLowerCase()
-    const mime =
-      extension === '.jpg' || extension === '.jpeg'
-        ? 'image/jpeg'
-        : extension === '.webp'
-          ? 'image/webp'
-          : 'image/png'
-
-    await this.page.evaluate(
-      async ({ base64, name, type }) => {
-        const binary = atob(base64)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-
-        const file = new File([bytes], name, { type })
-        const dataTransfer = new DataTransfer()
-        dataTransfer.items.add(file)
-
-        const target =
-          (document.querySelector('[class*="reference-group-content-"]') as HTMLElement | null) ??
-          (document.querySelector('[class*="reference-group-"]') as HTMLElement | null)
-        if (!target) throw new Error('未找到即梦参考图上传容器')
-
-        const options: DragEventInit = {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer,
-        }
-        target.dispatchEvent(new DragEvent('dragenter', options))
-        target.dispatchEvent(new DragEvent('dragover', options))
-        target.dispatchEvent(new DragEvent('drop', options))
-      },
-      { base64: buffer.toString('base64'), name: `ref${extension}`, type: mime },
-    )
-
-    await this.page
-      .locator(`${REFERENCE_GROUP_SELECTOR} img[src^="blob:"]`)
-      .first()
-      .waitFor({ state: 'visible', timeout: 30000 })
-    await this.page.waitForTimeout(3000)
   }
 
   /** 选择创作类型：图片生成 */
@@ -280,7 +304,7 @@ export default class JimengPage {
     await settingsButtons.nth(0).click()
     await this.page.waitForTimeout(500)
 
-    const clickIfPresent = async (locator: ReturnType<Page['locator']>): Promise<void> => {
+    const clickIfPresent = async (locator: Locator): Promise<void> => {
       if ((await locator.count()) === 0) return
       await locator.first().click()
     }

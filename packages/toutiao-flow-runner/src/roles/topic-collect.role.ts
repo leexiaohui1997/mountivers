@@ -1,15 +1,14 @@
 import { BookStatus, Prisma } from '@toutiao-flow/db'
 
+import { AiPageAdapter } from '../ai/adapter.js'
+import { getEngine } from '../ai/helper.js'
+import { generateTopicKeywords } from '../ai/logics/generate-topic-keywords.js'
 import ToutiaoPage, { parseDiscussionCount, type TopicItem } from '../browser-pages/toutiao.js'
-import YuanBaoPage from '../browser-pages/yuanbao.js'
-import { isTopicKeywordsJson } from '../types/topic-keywords.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
-import { extractJsonBlock } from '../utils/markdown.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
-import { renderTemplate } from '../utils/template.js'
 
 /** 话题数量达标线:不足则回到 AI 重新提炼关键词 */
 const TOPIC_TARGET = 3
@@ -39,8 +38,18 @@ export default class TopicCollectRole extends BaseRole {
     await browserQueue.run(
       `topic-collect:${book.id}`,
       async () => {
-        const yuanbaoPage = await getPage('topic-keywords-yuanbao')
         const toutiaoPage = await getPage('topic-collect-toutiao')
+        const engine = await getEngine({
+          ext: book.path,
+          sessionUrl: book.sessionUrl ?? undefined,
+        })
+        if (!engine) {
+          console.log(`[topic-collect] 不支持的文件类型，跳过: ${book.path}`)
+          await releasePage(toutiaoPage)
+          return
+        }
+
+        const ai = new AiPageAdapter(engine)
         try {
           const $toutiao = new ToutiaoPage(toutiaoPage)
           await $toutiao.ensureLogin()
@@ -53,9 +62,10 @@ export default class TopicCollectRole extends BaseRole {
           while (topics.length < TOPIC_TARGET && round < 5) {
             round++
 
-            const keywords = await this.getKeywords(new YuanBaoPage(yuanbaoPage), book.sessionUrl, [
-              ...excludeKeywords,
-            ])
+            const keywords = await generateTopicKeywords(ai, {
+              sessionUrl: book.sessionUrl ?? undefined,
+              exclude: [...excludeKeywords],
+            })
             if (!keywords.length) {
               console.log(`[topic-collect] 第 ${round} 轮未拿到关键词，放弃本轮`)
               break
@@ -110,47 +120,11 @@ export default class TopicCollectRole extends BaseRole {
             )
           }
         } finally {
-          await releasePage(yuanbaoPage)
+          await ai.release()
           await releasePage(toutiaoPage)
         }
       },
       this.priority,
     )
-  }
-
-  /**
-   * AI 提炼搜索关键词(复用 Book 的元宝会话):格式不合法时纠正重发,
-   * 持续重试直到拿到合法 JSON,不会返回空数组。
-   * 注意:本方法不设重试上限,调用期间会一直占用 browserQueue 的槽位。
-   */
-  async getKeywords(
-    $yuanbao: YuanBaoPage,
-    sessionUrl?: string | null,
-    exclude: string[] = [],
-  ): Promise<string[]> {
-    await $yuanbao.newSession(sessionUrl ?? undefined)
-    await $yuanbao.clearEditor()
-    await $yuanbao.input(await renderTemplate('topic-keywords.prompt', { exclude }))
-    await $yuanbao.send()
-
-    while (true) {
-      const answer = await $yuanbao.getAnswer()
-      const json = extractJsonBlock(answer)
-      if (!json) {
-        await $yuanbao.clearEditor()
-        await $yuanbao.input('请以 json 代码块的格式回复')
-        await $yuanbao.send()
-        continue
-      }
-
-      let failReason = ''
-      if (isTopicKeywordsJson(json, (reason) => (failReason = reason))) {
-        return json.keywords
-      }
-
-      await $yuanbao.clearEditor()
-      await $yuanbao.input(`json 格式错误，请调整：${failReason}`)
-      await $yuanbao.send()
-    }
   }
 }

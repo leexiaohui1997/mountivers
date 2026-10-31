@@ -1,24 +1,17 @@
 import { existsSync } from 'node:fs'
 
 import { Article, ArticleStatus, Book, BookStatus } from '@toutiao-flow/db'
-import { Page } from 'playwright'
 
-import YuanBaoPage from '../browser-pages/yuanbao.js'
-import { isArticleJson, type ArticleJson } from '../types/article.js'
+import { AiPageAdapter } from '../ai/adapter.js'
+import { getEngine } from '../ai/helper.js'
+import { generateArticle } from '../ai/logics/generate-article.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
-import { validateArticle } from '../utils/article-validator.js'
-import { attachToFile } from '../utils/attach.js'
 import { browserQueue } from '../utils/browser-queue.js'
-import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
-import { extractJsonBlock } from '../utils/markdown.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
-import { renderTemplate, renderToAttach } from '../utils/template.js'
-import { WORD_THRESHOLD } from '../utils/word-count.js'
 
-/** 角色专用的元宝标签页 */
-const ARTICLE_PAGE_ID = 'article-yuanbao'
+import type { Ai } from '../ai/types.js'
 
 type ArticleWithBook = Article & { book: Book }
 
@@ -72,11 +65,18 @@ export default class ArticleRole extends BaseRole {
       await browserQueue.run(
         `article:${book.id}:${article.index}`,
         async () => {
-          const page = await getPage(ARTICLE_PAGE_ID)
+          // 只按书籍格式选引擎：成稿不复用概览会话，避免同书多篇上下文互相干扰
+          const engine = await getEngine({ ext: book.path })
+          if (!engine) {
+            await this.markFailed(article.id, `不支持的书籍格式: ${book.path}`)
+            return
+          }
+
+          const ai = new AiPageAdapter(engine)
           try {
-            await this.generateArticle(page, article, book, overview, state)
+            await this.generateArticle(ai, article, book, overview, state)
           } finally {
-            await releasePage(page)
+            await ai.release()
           }
         },
         this.priority,
@@ -89,121 +89,39 @@ export default class ArticleRole extends BaseRole {
   }
 
   private async generateArticle(
-    page: Page,
+    ai: Ai,
     article: ArticleWithBook,
     book: Book,
     overview: OverviewJson,
     state: GenerateState,
   ): Promise<void> {
-    const $page = new YuanBaoPage(page)
-    // 每篇都开新会话，避免上一篇的上下文干扰
-    await $page.newSession()
-    await $page.clearEditor()
-
-    const bookFile = await attachToFile({ type: 'file', path: book.path })
-    const overviewFile = await attachToFile({
-      type: 'markdown',
-      filename: 'overview.json',
-      content: JSON.stringify(overview, null, 2),
-    })
-    const promptFile = await renderToAttach('article.prompt', '成稿编写提示词.md')
-
-    await $page.uploadFile(bookFile)
-    await $page.uploadFile(overviewFile)
-    await $page.uploadFile(promptFile)
-
-    await $page.input(`按提示词为第${article.index}篇撰写成稿 article，以 json 代码块的格式回复`)
-    await $page.send()
-
-    while (true) {
-      const answer = await $page.getAnswer()
-      const json = extractJsonBlock(answer)
-
-      if (!json) {
-        await this.handleFailure($page, article.id, state, ['AI 回复中没有找到 json 代码块。'], {
-          needExpand: false,
-          wordCount: 0,
-          jsonQuoteHint: true,
-        })
-        continue
-      }
-
-      let detail = ''
-      if (!isArticleJson(json, (reason) => (detail = reason))) {
-        await this.handleFailure(
-          $page,
+    const { data, sessionUrl } = await generateArticle(ai, {
+      bookPath: book.path,
+      overview,
+      index: article.index,
+      onViolation: async (info) => {
+        state.attempts = await this.recordFailure(
           article.id,
-          state,
-          [`article JSON 结构不符合 schema：\n${detail}`],
-          {
-            needExpand: false,
-            wordCount: 0,
-            jsonQuoteHint: true,
-          },
+          state.attempts,
+          info.violations.join('；'),
         )
-        continue
-      }
-
-      // no 以数据库篇号为准，避免模型写错导致无意义重试
-      const articleJson: ArticleJson = { ...json, no: article.index }
-      const { violations, wordCount, imageCount } = validateArticle(articleJson)
-
-      if (violations.length === 0) {
-        await prisma.article.update({
-          where: { id: article.id },
-          data: {
-            data: articleJson,
-            status: ArticleStatus.DATA_DONE,
-            attempts: 0,
-            lastError: null,
-            sessionUrl: page.url(),
-          },
-        })
-        console.log(
-          `[article] 成稿完成: book.id=${book.id}, 第${article.index}篇, 字数=${wordCount}, 插图=${imageCount}, 失败尝试=${state.attempts}`,
-        )
-        return
-      }
-
-      await this.handleFailure(
-        $page,
-        article.id,
-        state,
-        violations.map((violation) => violation.message),
-        {
-          needExpand: wordCount < WORD_THRESHOLD,
-          wordCount,
-        },
-      )
-    }
-  }
-
-  /**
-   * 记录一次失败并发送修复指令。不设重试上限，直到拿到通过校验的成稿。
-   * attempts 已在 recordFailure 中落库，调用方无需再写。
-   */
-  private async handleFailure(
-    $page: YuanBaoPage,
-    articleId: string,
-    state: GenerateState,
-    violations: string[],
-    extra: { needExpand: boolean; wordCount: number; jsonQuoteHint?: boolean },
-  ): Promise<void> {
-    const reason = violations.join('；')
-    state.attempts = await this.recordFailure(articleId, state.attempts, reason)
-
-    const repair = await renderTemplate('article-repair.prompt', {
-      violations,
-      needExpand: extra.needExpand,
-      wordCount: extra.wordCount,
-      threshold: WORD_THRESHOLD,
-      gap: Math.max(0, WORD_THRESHOLD - extra.wordCount),
-      jsonQuoteHint: extra.jsonQuoteHint ?? false,
+      },
     })
 
-    await $page.clearEditor()
-    await $page.input(repair)
-    await $page.send()
+    await prisma.article.update({
+      where: { id: article.id },
+      data: {
+        data,
+        status: ArticleStatus.DATA_DONE,
+        attempts: 0,
+        lastError: null,
+        sessionUrl,
+      },
+    })
+
+    console.log(
+      `[article] 成稿完成: book.id=${book.id}, 第${article.index}篇, 失败尝试=${state.attempts}`,
+    )
   }
 
   /** attempts+1，仅用于观测；不设上限，不会因次数置 FAILED */

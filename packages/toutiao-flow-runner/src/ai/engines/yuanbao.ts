@@ -1,15 +1,16 @@
-import { Page } from 'playwright'
-
-import { activatePage } from '../utils/browser.js'
+import { activatePage } from '../../utils/browser.js'
+import { AiPage } from '../types.js'
 
 const YUANBAO_URL = 'https://yuanbao.tencent.com/'
 const NEW_SESSION_URL = `${YUANBAO_URL}chat/naQivTmsDa`
 const COPY_MAX_ATTEMPTS = 4
 
-export default class YuanBaoPage {
-  constructor(public page: Page) {}
-
-  async ensureLogin() {
+/**
+ * 元宝引擎：直接基于 Playwright Page 实现 AiPage。
+ */
+export default class YuanbaoAiPageEngine extends AiPage {
+  async ensureLogin(): Promise<void> {
+    await this.ensurePage()
     const url = this.page.url()
     if (!url.startsWith(YUANBAO_URL)) {
       await this.page.goto(YUANBAO_URL)
@@ -27,18 +28,19 @@ export default class YuanBaoPage {
 
       await avatarImg.dispatchEvent('click')
       await this.page.waitForTimeout(300)
-      const loginCotent = this.page.locator('.hyc-login__content').first()
-      await loginCotent.waitFor({ state: 'visible' })
+      const loginContent = this.page.locator('.hyc-login__content').first()
+      await loginContent.waitFor({ state: 'visible' })
       console.log('[元宝] 请扫码完成登录')
       await Promise.race([
-        loginCotent.waitFor({ state: 'hidden', timeout: 0 }),
-        loginCotent.waitFor({ state: 'detached', timeout: 0 }),
+        loginContent.waitFor({ state: 'hidden', timeout: 0 }),
+        loginContent.waitFor({ state: 'detached', timeout: 0 }),
       ])
-      await new Promise((r) => setTimeout(r, 3000))
+      await new Promise((resolve) => setTimeout(resolve, 3000))
     }
   }
 
-  async newSession(url?: string) {
+  async openSession(url?: string): Promise<void> {
+    await this.ensurePage()
     await activatePage(this.page)
     await this.ensureLogin()
     const target = url && url.startsWith(YUANBAO_URL) ? url : NEW_SESSION_URL
@@ -48,16 +50,17 @@ export default class YuanBaoPage {
     await this.page.waitForLoadState('domcontentloaded')
   }
 
-  async uploadFile(file: File, image = false) {
+  async uploadFile(file: File): Promise<void> {
+    await this.ensurePage()
     const addToolsAction = this.page
       .locator('[data-new-input-card] [data-new-input-control="add-tools"]')
       .first()
     await addToolsAction.waitFor({ state: 'visible' })
     await addToolsAction.click()
     await this.page.waitForTimeout(300)
-    const trigger = this.page
-      .locator(`button[role="menuitem"]:has-text("${image ? '上传图片' : '本地文件'}")`)
-      .first()
+    // 图片作为 text2text 附件时走「上传图片」，普通文档走「本地文件」
+    const menuText = file.type.startsWith('image/') ? '上传图片' : '本地文件'
+    const trigger = this.page.locator(`button[role="menuitem"]:has-text("${menuText}")`).first()
     await trigger.waitFor({ state: 'visible' })
     const [chooser] = await Promise.all([this.page.waitForEvent('filechooser'), trigger.click()])
     await chooser.setFiles({
@@ -67,7 +70,8 @@ export default class YuanBaoPage {
     })
   }
 
-  async uploadImage(file: File) {
+  async uploadImage(file: File): Promise<void> {
+    await this.ensurePage()
     const trigger = this.page.locator('[data-new-input-card] button[aria-label="上传图片"]').first()
     await trigger.waitFor({ state: 'visible' })
     const [chooser] = await Promise.all([this.page.waitForEvent('filechooser'), trigger.click()])
@@ -78,50 +82,14 @@ export default class YuanBaoPage {
     })
   }
 
-  async clearFiles() {
-    while (true) {
-      const item = this.page.locator('[class^="FileList_inputFileListItem"]').first()
-      const exists = await item
-        .waitFor({ state: 'visible', timeout: 1000 })
-        .then(() => true)
-        .catch(() => false)
-      if (!exists) break
-      await item.hover()
-      await this.page.waitForTimeout(300)
-      const closeAction = item.locator('[class^="FileList_inputFileListItemClose"]').first()
-      await closeAction.waitFor({ state: 'visible' })
-      await closeAction.click()
-      await this.page.waitForTimeout(300)
-    }
-  }
-
-  async clearInput() {
-    const editor = this.page.locator('.ql-editor[contenteditable="true"]').first()
-    await editor.waitFor({ state: 'visible' })
-    await editor.click()
-
-    // 1. 平台正确的全选快捷键(Windows=Control+A,macOS=Meta+A)
-    const selectAll = process.platform === 'darwin' ? 'Meta+A' : 'Control+A'
-    await this.page.keyboard.press(selectAll)
-    await this.page.keyboard.press('Delete')
-    await this.page.waitForTimeout(150)
-
-    // 2. 兜底:若仍有残留文本,直接清空 Quill 内容并触发 input 事件同步其内部状态
-    const stillHas = await editor.evaluate((el) => (el.textContent ?? '').trim().length)
-    if (stillHas > 0) {
-      await editor.evaluate((el) => {
-        el.innerHTML = ''
-        el.dispatchEvent(new Event('input', { bubbles: true }))
-      })
-    }
-  }
-
-  async clearEditor() {
+  async clearEditor(): Promise<void> {
+    await this.ensurePage()
     await this.clearFiles()
     await this.clearInput()
   }
 
-  async input(text: string) {
+  async input(text: string): Promise<void> {
+    await this.ensurePage()
     const editor = this.page.locator('.ql-editor[contenteditable="true"]').first()
     await editor.waitFor({ state: 'visible' })
     await editor.click()
@@ -129,16 +97,18 @@ export default class YuanBaoPage {
     await this.page.waitForTimeout(300)
   }
 
-  async send() {
-    const sendBtn = this.page
+  async send(): Promise<void> {
+    await this.ensurePage()
+    const sendButton = this.page
       .locator('#yuanbao-send-btn:not([class*="SendButton_sendNot"])')
       .first()
-    await sendBtn.waitFor({ state: 'visible' })
-    await sendBtn.click()
+    await sendButton.waitFor({ state: 'visible' })
+    await sendButton.click()
     await this.page.waitForTimeout(300)
   }
 
-  async getAnswer() {
+  async getAnswer(): Promise<string> {
+    await this.ensurePage()
     await this.page.waitForTimeout(1000)
 
     const readClipboard = () =>
@@ -157,9 +127,11 @@ export default class YuanBaoPage {
       await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
       await copyTrigger.scrollIntoViewIfNeeded()
       await copyTrigger.click()
-      const copyBtn = this.page.locator('.t-dropdown__item:has-text("复制为Markdown")').first()
-      await copyBtn.waitFor({ state: 'visible' })
-      await copyBtn.click()
+
+      const copyButton = this.page.locator('.t-dropdown__item:has-text("复制为Markdown")').first()
+      await copyButton.waitFor({ state: 'visible' })
+      await copyButton.click()
+
       await this.page
         .locator('.t-message__list:has-text("回答复制成功")')
         .first()
@@ -182,8 +154,9 @@ export default class YuanBaoPage {
     return before
   }
 
-  async getImageAnswer() {
-    const img = this.page
+  async getImageAnswer(): Promise<string> {
+    await this.ensurePage()
+    const image = this.page
       .locator('.agent-chat__list__content .agent-chat__list__item[data-conv-speaker="ai"]')
       .last()
       .locator('img.dic-card-item__img--loaded')
@@ -192,57 +165,97 @@ export default class YuanBaoPage {
       .locator('.hyc-content-loading__text:has-text("图片生成失败")')
       .first()
 
-    // 并行等两个结果，谁先到走谁的分支
     await Promise.race([
-      img.waitFor({ state: 'visible', timeout: 0 }),
+      image.waitFor({ state: 'visible', timeout: 0 }),
       failHint.waitFor({ state: 'visible', timeout: 0 }),
     ])
 
-    // 若失败提示先出现，抛错
     if (await failHint.isVisible().catch(() => false)) {
       const text = (await failHint.textContent().catch(() => '')) || ''
       throw new Error(text.trim())
     }
 
-    const url = await img.getAttribute('data-download-url')
+    const url = await image.getAttribute('data-download-url')
     if (!url) throw new Error('最新出图卡片 data-download-url 为空')
     return url
   }
 
-  async setImageMode() {
-    // 输入框操作区容器
+  /** 切换到 AI 生图模式；text2Image 适配会用到 */
+  async setImageMode(): Promise<void> {
+    await this.ensurePage()
     const actions = this.page.locator('div[data-new-input-control="atomic-actions"]').first()
     await actions.waitFor({ state: 'visible' })
 
-    // 直接有"AI 生图"按钮就点；没有则重查两次（首屏渲染慢时按钮会晚出现）
-    let directBtn = actions.locator('button[aria-label="AI 生图"]')
-    for (let i = 0; i < 3 && (await directBtn.count()) === 0; i++) {
+    let directButton = actions.locator('button[aria-label="AI 生图"]')
+    for (let i = 0; i < 3 && (await directButton.count()) === 0; i++) {
       await this.page.waitForTimeout(2000)
-      directBtn = actions.locator('button[aria-label="AI 生图"]')
+      directButton = actions.locator('button[aria-label="AI 生图"]')
     }
-    if ((await directBtn.count()) > 0) {
-      await directBtn.first().click()
-    } else {
-      // 否则先点"工具"按钮，再在菜单里选"AI 生图"（点击失败则刷新重试一次）
-      const toolBtn = actions.locator('button[aria-label="工具"]').first()
-      try {
-        await toolBtn.click({ timeout: 10000 })
-      } catch {
-        console.log('[yuanbao] 工具按钮点击失败，刷新页面重试…')
-        await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 })
-        const actions2 = this.page.locator('div[data-new-input-control="atomic-actions"]').first()
-        await actions2.waitFor({ state: 'visible', timeout: 15000 })
-        await this.page.waitForTimeout(2000)
-        await actions2.locator('button[aria-label="工具"]').first().click({ timeout: 15000 })
-      }
-      const menuItem = this.page.locator('button[role="menuitem"][aria-label="AI 生图"]').first()
-      try {
-        await menuItem.waitFor({ state: 'visible', timeout: 5000 })
-      } catch {
-        throw new Error('✗ 工具菜单中未找到 AI 生图入口，请检查元宝页面或账号是否具备生图能力')
-      }
-      await menuItem.click()
+
+    if ((await directButton.count()) > 0) {
+      await directButton.first().click()
+      await this.page.waitForTimeout(500)
+      return
     }
+
+    const toolButton = actions.locator('button[aria-label="工具"]').first()
+    try {
+      await toolButton.click({ timeout: 10000 })
+    } catch {
+      console.log('[元宝] 工具按钮点击失败，刷新页面重试…')
+      await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 })
+      const retryActions = this.page.locator('div[data-new-input-control="atomic-actions"]').first()
+      await retryActions.waitFor({ state: 'visible', timeout: 15000 })
+      await this.page.waitForTimeout(2000)
+      await retryActions.locator('button[aria-label="工具"]').first().click({ timeout: 15000 })
+    }
+
+    const menuItem = this.page.locator('button[role="menuitem"][aria-label="AI 生图"]').first()
+    try {
+      await menuItem.waitFor({ state: 'visible', timeout: 5000 })
+    } catch {
+      throw new Error('工具菜单中未找到 AI 生图入口，请检查元宝页面或账号是否具备生图能力')
+    }
+    await menuItem.click()
     await this.page.waitForTimeout(500)
+  }
+
+  private async clearFiles(): Promise<void> {
+    while (true) {
+      const item = this.page.locator('[class^="FileList_inputFileListItem"]').first()
+      const exists = await item
+        .waitFor({ state: 'visible', timeout: 1000 })
+        .then(() => true)
+        .catch(() => false)
+      if (!exists) break
+
+      await item.hover()
+      await this.page.waitForTimeout(300)
+      const closeAction = item.locator('[class^="FileList_inputFileListItemClose"]').first()
+      await closeAction.waitFor({ state: 'visible' })
+      await closeAction.click()
+      await this.page.waitForTimeout(300)
+    }
+  }
+
+  private async clearInput(): Promise<void> {
+    const editor = this.page.locator('.ql-editor[contenteditable="true"]').first()
+    await editor.waitFor({ state: 'visible' })
+    await editor.click()
+
+    const selectAll = process.platform === 'darwin' ? 'Meta+A' : 'Control+A'
+    await this.page.keyboard.press(selectAll)
+    await this.page.keyboard.press('Delete')
+    await this.page.waitForTimeout(150)
+
+    const stillHasText = await editor.evaluate(
+      (element) => (element.textContent ?? '').trim().length,
+    )
+    if (stillHasText > 0) {
+      await editor.evaluate((element) => {
+        element.innerHTML = ''
+        element.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    }
   }
 }
