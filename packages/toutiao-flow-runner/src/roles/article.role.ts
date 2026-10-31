@@ -16,21 +16,10 @@ import BaseRole from '../utils/role/base.js'
 import { renderTemplate, renderToAttach } from '../utils/template.js'
 import { WORD_THRESHOLD } from '../utils/word-count.js'
 
-/** 单篇成稿的最大失败尝试次数；达到后置 FAILED，等待人工重置 */
-const MAX_ATTEMPTS = 4
-
 /** 角色专用的元宝标签页 */
 const ARTICLE_PAGE_ID = 'article-yuanbao'
 
 type ArticleWithBook = Article & { book: Book }
-
-/** 尝试次数耗尽：失败已落库，外层不再重复计数 */
-class ArticleAttemptsExhausted extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ArticleAttemptsExhausted'
-  }
-}
 
 /** 生成过程中维护的本地状态（与 DB 中的 attempts 同步） */
 interface GenerateState {
@@ -55,11 +44,6 @@ export default class ArticleRole extends BaseRole {
     const { book } = article
     const attempts = article.attempts
 
-    if (attempts >= MAX_ATTEMPTS) {
-      await this.markFailed(article.id, article.lastError ?? '尝试次数已达上限')
-      return
-    }
-
     const overview = book.overview
     if (!isOverviewJson(overview)) {
       await this.markFailed(article.id, '概览 JSON 非法，无法生成成稿')
@@ -77,7 +61,7 @@ export default class ArticleRole extends BaseRole {
     }
 
     console.log(
-      `[article] 开始生成成稿: book.id=${book.id}, 第${article.index}篇, 已失败=${attempts} 次`,
+      `[article] 开始生成成稿: book.id=${book.id}, 第${article.index}篇, 已失败=${attempts} 次（不设上限）`,
     )
 
     const state: GenerateState = { attempts }
@@ -92,9 +76,6 @@ export default class ArticleRole extends BaseRole {
         }
       })
     } catch (error) {
-      if (error instanceof ArticleAttemptsExhausted) {
-        return
-      }
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[article] 生成异常: book.id=${book.id}, 第${article.index}篇: ${reason}`)
       await this.recordFailure(article.id, state.attempts, `生成异常：${reason}`)
@@ -136,6 +117,7 @@ export default class ArticleRole extends BaseRole {
         await this.handleFailure($page, article.id, state, ['AI 回复中没有找到 json 代码块。'], {
           needExpand: false,
           wordCount: 0,
+          jsonQuoteHint: true,
         })
         continue
       }
@@ -147,7 +129,11 @@ export default class ArticleRole extends BaseRole {
           article.id,
           state,
           [`article JSON 结构不符合 schema：\n${detail}`],
-          { needExpand: false, wordCount: 0 },
+          {
+            needExpand: false,
+            wordCount: 0,
+            jsonQuoteHint: true,
+          },
         )
         continue
       }
@@ -187,7 +173,7 @@ export default class ArticleRole extends BaseRole {
   }
 
   /**
-   * 记录一次失败并发送修复指令；达到上限时抛 ArticleAttemptsExhausted。
+   * 记录一次失败并发送修复指令。不设重试上限，直到拿到通过校验的成稿。
    * attempts 已在 recordFailure 中落库，调用方无需再写。
    */
   private async handleFailure(
@@ -195,14 +181,10 @@ export default class ArticleRole extends BaseRole {
     articleId: string,
     state: GenerateState,
     violations: string[],
-    extra: { needExpand: boolean; wordCount: number },
+    extra: { needExpand: boolean; wordCount: number; jsonQuoteHint?: boolean },
   ): Promise<void> {
     const reason = violations.join('；')
     state.attempts = await this.recordFailure(articleId, state.attempts, reason)
-
-    if (state.attempts >= MAX_ATTEMPTS) {
-      throw new ArticleAttemptsExhausted(`已达最大尝试次数 ${MAX_ATTEMPTS}，标记 FAILED`)
-    }
 
     const repair = await renderTemplate('article-repair.prompt', {
       violations,
@@ -210,6 +192,7 @@ export default class ArticleRole extends BaseRole {
       wordCount: extra.wordCount,
       threshold: WORD_THRESHOLD,
       gap: Math.max(0, WORD_THRESHOLD - extra.wordCount),
+      jsonQuoteHint: extra.jsonQuoteHint ?? false,
     })
 
     await $page.clearEditor()
@@ -217,27 +200,23 @@ export default class ArticleRole extends BaseRole {
     await $page.send()
   }
 
-  /** attempts+1 并在达到上限时置 FAILED，返回新的 attempts */
+  /** attempts+1，仅用于观测；不设上限，不会因次数置 FAILED */
   private async recordFailure(
     articleId: string,
     attempts: number,
     reason: string,
   ): Promise<number> {
     const next = attempts + 1
-    const reachedLimit = next >= MAX_ATTEMPTS
 
     await prisma.article.update({
       where: { id: articleId },
       data: {
         attempts: next,
         lastError: reason.slice(0, 2000),
-        ...(reachedLimit ? { status: ArticleStatus.FAILED } : {}),
       },
     })
 
-    console.error(
-      `[article] 第 ${next}/${MAX_ATTEMPTS} 次尝试失败: ${reason}${reachedLimit ? ' → FAILED' : ''}`,
-    )
+    console.error(`[article] 第 ${next} 次尝试失败（不设上限）: ${reason}`)
     return next
   }
 

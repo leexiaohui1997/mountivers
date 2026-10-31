@@ -4,12 +4,14 @@ import { z } from 'zod'
 export const CheckJsonSchema = z.object({
   /** 整体是否合格:所有检查项全部通过才为 true */
   pass: z.boolean(),
-  /** 逐项检查结果,与模板 5 个校验维度一一对应 */
+  /** 0~100 综合评分；用于失败时挑选最佳结果，即使合格也必须给出 */
+  score: z.number().min(0).max(100),
+  /** 逐项检查结果,与模板 6 个校验维度一一对应 */
   checks: z.array(
     z.object({
       name: z.string(),
       pass: z.boolean(),
-      /** 不通过的具体原因;通过则留空字符串 */
+      /** 不通过的具体原因；通过时可为空，也可写一条非阻塞的改进建议 */
       reason: z.string(),
     }),
   ),

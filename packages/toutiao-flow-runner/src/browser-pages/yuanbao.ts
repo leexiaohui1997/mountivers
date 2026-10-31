@@ -2,6 +2,7 @@ import { Page } from 'playwright'
 
 const YUANBAO_URL = 'https://yuanbao.tencent.com/'
 const NEW_SESSION_URL = `${YUANBAO_URL}chat/naQivTmsDa`
+const COPY_MAX_ATTEMPTS = 4
 
 export default class YuanBaoPage {
   constructor(public page: Page) {}
@@ -39,7 +40,7 @@ export default class YuanBaoPage {
     await this.page.bringToFront()
     await this.ensureLogin()
     const target = url && url.startsWith(YUANBAO_URL) ? url : NEW_SESSION_URL
-    if (!this.page.url().startsWith(target)) {
+    if (this.page.url() !== target) {
       await this.page.goto(target)
     }
     await this.page.waitForLoadState('domcontentloaded')
@@ -136,24 +137,47 @@ export default class YuanBaoPage {
   }
 
   async getAnswer() {
-    await this.page.waitForTimeout(2000)
-    const copyTrigger = this.page.locator(
-      '.agent-chat__list__item--last [class^="ToolbarCopy_arrowIconWrap"]',
-    )
-    await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
-    await copyTrigger.scrollIntoViewIfNeeded()
-    await copyTrigger.click()
-    const copyBtn = this.page.locator('.t-dropdown__item:has-text("复制为Markdown")').first()
-    await copyBtn.waitFor({ state: 'visible' })
-    await copyBtn.click()
-    await this.page
-      .locator('.t-message__list:has-text("回答复制成功")')
-      .first()
-      .waitFor({ state: 'visible', timeout: 10000 })
-    const text = await this.page.evaluate(async () => {
-      return await navigator.clipboard.readText()
-    })
-    return text
+    await this.page.waitForTimeout(1000)
+
+    const readClipboard = () =>
+      this.page.evaluate(async () => {
+        return await navigator.clipboard.readText()
+      })
+
+    // 复制前先记录剪贴板内容；复制后内容变化才算成功，最多尝试 4 次
+    // 下一轮的 before 直接复用上一轮的 after，不再重复读取剪贴板
+    let before = await readClipboard()
+
+    for (let attempt = 1; attempt <= COPY_MAX_ATTEMPTS; attempt++) {
+      const copyTrigger = this.page.locator(
+        '.agent-chat__list__item--last [class^="ToolbarCopy_arrowIconWrap"]',
+      )
+      await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
+      await copyTrigger.scrollIntoViewIfNeeded()
+      await copyTrigger.click()
+      const copyBtn = this.page.locator('.t-dropdown__item:has-text("复制为Markdown")').first()
+      await copyBtn.waitFor({ state: 'visible' })
+      await copyBtn.click()
+      await this.page
+        .locator('.t-message__list:has-text("回答复制成功")')
+        .first()
+        .waitFor({ state: 'visible', timeout: 10000 })
+      await this.page.waitForTimeout(1000)
+
+      const after = await readClipboard()
+      if (after !== before) {
+        return after
+      }
+
+      console.log(
+        `[元宝] 复制回答后剪贴板内容未变化（第 ${attempt}/${COPY_MAX_ATTEMPTS} 次），重试`,
+      )
+      before = after
+    }
+
+    // 超过重试上限：直接返回当前剪贴板内容，避免中断后续流程
+    console.warn(`[元宝] 复制回答连续 ${COPY_MAX_ATTEMPTS} 次剪贴板内容未变化，返回当前剪贴板内容`)
+    return before
   }
 
   async getImageAnswer() {

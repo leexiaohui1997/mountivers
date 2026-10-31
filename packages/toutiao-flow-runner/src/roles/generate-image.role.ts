@@ -1,53 +1,30 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
-import { BookStatus, PrismaClient } from '@toutiao-flow/db'
-import { Page } from 'playwright'
+import { BookStatus } from '@toutiao-flow/db'
 
-import WenxinPage from '../browser-pages/wenxin.js'
-import YuanBaoPage from '../browser-pages/yuanbao.js'
-import { isCheckJson, type CheckJson } from '../types/check.js'
-import { isFixPromptJson } from '../types/fix-prompt.js'
 import { isOverviewJson } from '../types/overview.js'
-import { attachToFile, saveFile } from '../utils/attach.js'
 import { browserQueue } from '../utils/browser-queue.js'
-import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
-import { extractJsonBlock } from '../utils/markdown.js'
+import { runImageTasks, type ImageTask } from '../utils/image-runner.js'
 import BaseRole from '../utils/role/base.js'
-import { renderTemplate } from '../utils/template.js'
-
-type Task = {
-  bookId: string
-  prompt: () => string
-  attachPath?: () => string | null
-  /** 修词会话 URL(通常为 Book 的 sessionUrl);缺省用元宝默认新会话 */
-  sessionUrl?: () => string | null
-  /** 提示词修正后回调:闭包内负责覆盖 overview 并落库 */
-  onPromptFixed?: (fixedPrompt: string) => Promise<void>
-  onResult?: (filePath: string, tx: PrismaClient) => Promise<void>
-  onFail?: () => Promise<void>
-}
 
 export default class GenerateImageRole extends BaseRole {
   cron = '* * * * * ?'
   waitPrevious = true
 
   async run(): Promise<void> {
-    const tasks: Task[] = [...(await this.getBookSchedule()), ...(await this.getArticleSchedule())]
+    const tasks = await this.getBookSchedule()
     if (!tasks.length) return
 
     // 浏览器是共享单例：整段页面流程作为一个任务串行执行
-    // 标签带上涉及的书目，便于日志定位是哪些 book 占用了队列
-    const bookIds = [...new Set(tasks.map((task) => task.bookId))]
-    const label = `generate-image:${bookIds.join(',') || `${tasks.length} tasks`}`
-    await browserQueue.run(label, async () => {
-      await this.generateImageYuanbao(tasks)
+    await browserQueue.run(`generate-image:${tasks.length}`, async () => {
+      await runImageTasks(tasks)
     })
   }
 
-  async getBookSchedule(): Promise<Task[]> {
+  async getBookSchedule(): Promise<ImageTask[]> {
     const books = await prisma.book.findMany({
       where: {
         status: BookStatus.PROCESSING,
@@ -58,7 +35,7 @@ export default class GenerateImageRole extends BaseRole {
       },
     })
 
-    const tasks: Task[] = []
+    const tasks: ImageTask[] = []
     for (const book of books) {
       const overview = book.overview
       if (!isOverviewJson(overview)) continue
@@ -67,8 +44,9 @@ export default class GenerateImageRole extends BaseRole {
 
       if (!book.toutiaoCoverPath) {
         tasks.push({
-          bookId: book.id,
+          label: `toutiao-cover:${book.id}`,
           prompt: () => overview.collectionCoverPrompt,
+          outputPath: () => path.resolve(IMAGE_DOWNLOAD_DIR, `${book.id}/${randomUUID()}.png`),
           sessionUrl: () => book.sessionUrl,
           onPromptFixed: async (fixedPrompt) => {
             overview.collectionCoverPrompt = fixedPrompt
@@ -93,8 +71,9 @@ export default class GenerateImageRole extends BaseRole {
 
       if (!book.xhsCoverPath) {
         tasks.push({
-          bookId: book.id,
+          label: `xhs-cover:${book.id}`,
           prompt: () => overview.xhsCollectionCoverPrompt,
+          outputPath: () => path.resolve(IMAGE_DOWNLOAD_DIR, `${book.id}/${randomUUID()}.png`),
           attachPath: () => toutiaoCoverPath,
           sessionUrl: () => book.sessionUrl,
           onPromptFixed: async (fixedPrompt) => {
@@ -119,214 +98,5 @@ export default class GenerateImageRole extends BaseRole {
     }
 
     return tasks
-  }
-
-  async getArticleSchedule(): Promise<Task[]> {
-    return []
-  }
-
-  async generateImageYuanbao(tasks: Task[]) {
-    if (!tasks.length) return
-    const yuanbaoPage = await getPage('gen-img-yuanbao')
-    const wenxinPage = await getPage('gen-img-yuanbao-wenxin')
-    const checkPage = await getPage('yuanbao-check-image')
-    // 修词页面惰性创建,只在出图失败时才建会话
-    let fixPage: Page | null = null
-
-    try {
-      const $wenxinPage = new WenxinPage(wenxinPage)
-      await $wenxinPage.newSession()
-      const $yuanbaoPage = new YuanBaoPage(yuanbaoPage)
-      await $yuanbaoPage.newSession()
-      const $checkPage = new YuanBaoPage(checkPage)
-      await $checkPage.newSession()
-      let $fixPage: YuanBaoPage | null = null
-
-      await yuanbaoPage.bringToFront()
-      await $yuanbaoPage.setImageMode()
-
-      for (const task of tasks) {
-        let prompt = task.prompt()
-        let outputPath = ''
-        let passed = false
-        let tryTimes = 0
-
-        // 单任务闭环:出图 → 去水印 → 校验;校验不通过采纳 suggestion 重跑,最多 3 次
-        while (tryTimes < 3 && !passed) {
-          tryTimes++
-
-          // 元宝出图
-          await yuanbaoPage.bringToFront()
-          await $yuanbaoPage.clearEditor()
-          const attachPath = task.attachPath?.()
-          if (attachPath) {
-            const file = await attachToFile({ type: 'file', path: attachPath })
-            await $yuanbaoPage.uploadImage(file)
-          }
-          await $yuanbaoPage.input(prompt)
-          await $yuanbaoPage.send()
-
-          let src = ''
-          try {
-            src = await $yuanbaoPage.getImageAnswer()
-          } catch (e) {
-            const detail = e instanceof Error ? e.message : String(e)
-            console.log(`[gen-image] 第 ${tryTimes} 次出图失败，按提示词违规处理: ${detail}`)
-
-            // 调起修词 AI(复用 Book 的元宝会话)，改写提示词后覆盖原 overview 并重跑
-            try {
-              if (!fixPage) {
-                fixPage = await getPage('fix-prompt-yuanbao')
-                $fixPage = new YuanBaoPage(fixPage)
-              }
-              const fixed = await this.fixPrompt($fixPage!, prompt, task.sessionUrl?.())
-              if (fixed) {
-                prompt = fixed
-                await task.onPromptFixed?.(fixed)
-                console.log(`[gen-image] 提示词已改写，重跑该任务`)
-              }
-            } catch (fixErr) {
-              console.error(
-                `[gen-image] 修词失败: ${fixErr instanceof Error ? fixErr.message : String(fixErr)}`,
-              )
-            }
-            continue
-          }
-
-          // 文心去水印
-          const yuanbaoImage = await attachToFile({ type: 'url', path: src, filename: 'image.png' })
-          let wenxinResult = ''
-          try {
-            wenxinResult = await this.removeWaterMark($wenxinPage, yuanbaoImage)
-          } catch (e) {
-            console.log(`[gen-image] 第 ${tryTimes} 次去水印失败: ${(e as Error).message}`)
-            continue
-          }
-
-          // 校验
-          const file = await attachToFile({
-            type: 'url',
-            path: wenxinResult,
-            filename: 'image.png',
-          })
-          const check = await this.checkImage($checkPage, file, prompt)
-          const brief = check.checks
-            .map((c) => `${c.name}${c.pass ? '✓' : `✗(${c.reason})`}`)
-            .join(' ')
-          console.log(`[gen-image] 第 ${tryTimes} 次校验结果(pass=${check.pass}): ${brief}`)
-
-          if (check.pass) {
-            passed = true
-            outputPath = path.resolve(IMAGE_DOWNLOAD_DIR, `${task.bookId}/${randomUUID()}.png`)
-            await saveFile(file, outputPath)
-            break
-          }
-
-          // 不通过:校验返回的 suggestion 即调整后的完整提示词，直接用它重跑
-          const suggestion = check.suggestion.trim()
-          if (suggestion) {
-            prompt = suggestion
-            console.log(`[gen-image] 采用校验返回的最终提示词重跑: ${suggestion}`)
-          }
-        }
-
-        if (passed) {
-          await task.onResult?.(outputPath, prisma)
-        } else {
-          console.error(`[gen-image] 任务重试 3 次仍未通过，放弃该任务: ${prompt}`)
-          await task.onFail?.()
-        }
-      }
-    } finally {
-      await releasePage(yuanbaoPage)
-      await releasePage(wenxinPage)
-      await releasePage(checkPage)
-      if (fixPage) await releasePage(fixPage)
-    }
-  }
-
-  /**
-   * 违规提示词改写:复用 Book 的元宝会话(缺省用默认会话),
-   * 让 AI 改写规避违规表述,返回改写后的提示词文本。
-   * 格式不合法时纠正重发,持续重试直到拿到合法 JSON(不设重试上限),
-   * 因此调用期间会一直占用 browserQueue 的槽位。
-   */
-  async fixPrompt(
-    $fixPage: YuanBaoPage,
-    prompt: string,
-    sessionUrl?: string | null,
-  ): Promise<string> {
-    await $fixPage.newSession(sessionUrl ?? undefined)
-    await $fixPage.clearEditor()
-    await $fixPage.input(await renderTemplate('fix-prompt.prompt', { prompt }))
-    await $fixPage.send()
-
-    while (true) {
-      const answer = await $fixPage.getAnswer()
-      const json = extractJsonBlock(answer)
-      if (!json) {
-        await $fixPage.clearEditor()
-        await $fixPage.input('请以 json 代码块的格式回复')
-        await $fixPage.send()
-        continue
-      }
-
-      let failReason = ''
-      if (isFixPromptJson(json, (reason) => (failReason = reason))) {
-        return json.prompt
-      }
-
-      await $fixPage.clearEditor()
-      await $fixPage.input(`json 格式错误，请调整：${failReason}`)
-      await $fixPage.send()
-    }
-  }
-
-  /** 图片质量校验:上传图片 + 渲染后的校验提示词,循环直至拿到合法 check.json */
-  async checkImage($checkPage: YuanBaoPage, file: File, prompt: string): Promise<CheckJson> {
-    await $checkPage.newSession()
-    await $checkPage.clearEditor()
-    await $checkPage.uploadFile(file, true)
-    await $checkPage.input(await renderTemplate('image-check.prompt', { prompt }))
-    await $checkPage.send()
-
-    while (true) {
-      const answer = await $checkPage.getAnswer()
-      const json = extractJsonBlock(answer)
-      if (!json) {
-        await $checkPage.clearEditor()
-        await $checkPage.input('请以 json 代码块的格式回复')
-        await $checkPage.send()
-        continue
-      }
-
-      let failReason = ''
-      if (isCheckJson(json, (reason) => (failReason = reason))) {
-        return json
-      }
-
-      await $checkPage.clearEditor()
-      await $checkPage.input(`json 格式错误，请调整：${failReason}`)
-      await $checkPage.send()
-    }
-  }
-
-  /** 文心一言去水印:粘贴图片 + "去水印"发送,最多重试 3 次,返回去水印后图片 URL */
-  async removeWaterMark($wenxinPage: WenxinPage, image: File): Promise<string> {
-    await $wenxinPage.page.bringToFront()
-
-    let reTryTimes = 0
-    while (reTryTimes < 3) {
-      await $wenxinPage.pasteImage(image)
-      await $wenxinPage.input('去水印')
-      await $wenxinPage.send()
-      try {
-        return await $wenxinPage.getImageAnswer()
-      } catch {
-        reTryTimes++
-      }
-    }
-
-    throw new Error('文心一言去水印失败(重试 3 次)')
   }
 }

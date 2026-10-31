@@ -12,10 +12,12 @@ const TitleBlockSchema = z.object({
   content: z.string().min(1),
 })
 
-/** 插图：成稿阶段只写提示词，图片路径由后续生图角色回填 */
+/** 插图：成稿阶段只有提示词，图片路径由生图角色回填到 content */
 const ImageBlockSchema = z.object({
   type: z.literal('image'),
   prompt: z.string().min(1),
+  /** 生成后的图片路径（绝对路径） */
+  content: z.string().optional(),
 })
 
 export const ArticleBlockSchema = z.discriminatedUnion('type', [
@@ -31,6 +33,10 @@ export const ArticleJsonSchema = z.object({
   altTitles: z.array(z.string()),
   coverPrompt: z.string().min(1),
   bilibiliCoverPrompt: z.string().min(1),
+  /** 成稿封面路径（生图后回填） */
+  cover: z.string().optional(),
+  /** B站封面路径（生图后回填） */
+  bilibiliCover: z.string().optional(),
   content: z.array(ArticleBlockSchema).min(1),
   goldenQuotes: z.array(z.string()),
   tags: z.array(z.string()),
@@ -38,6 +44,7 @@ export const ArticleJsonSchema = z.object({
 })
 
 export type ArticleBlock = z.infer<typeof ArticleBlockSchema>
+export type ImageBlock = z.infer<typeof ImageBlockSchema>
 export type ArticleJson = z.infer<typeof ArticleJsonSchema>
 
 /** 将 zod issues 格式化为可读的多行错误描述 */
