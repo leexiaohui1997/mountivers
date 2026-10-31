@@ -1,3 +1,4 @@
+import JimengPage from '../browser-pages/jimeng.js'
 import WenxinPage from '../browser-pages/wenxin.js'
 import YuanBaoPage from '../browser-pages/yuanbao.js'
 import { isCheckJson, type CheckJson } from '../types/check.js'
@@ -6,6 +7,12 @@ import { isFixPromptJson } from '../types/fix-prompt.js'
 import { attachToFile, saveFile } from './attach.js'
 import { getPage, releasePage } from './browser.js'
 import { prisma } from './db.js'
+import {
+  consumeJimengCredit,
+  getJimengCreditState,
+  markJimengCreditExhausted,
+  setJimengCreditState,
+} from './jimeng-credit.js'
 import { extractJsonBlock } from './markdown.js'
 import { renderTemplate } from './template.js'
 
@@ -54,18 +61,28 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
   if (!tasks.length) return []
 
   const results: ImageTaskResult[] = []
-  const yuanbaoPage = await getPage('gen-img-yuanbao')
-  const wenxinPage = await getPage('gen-img-yuanbao-wenxin')
   const checkPage = await getPage('yuanbao-check-image')
+  // 元宝 / 文心页面惰性获取：只有确定走元宝引擎时才打开
+  let yuanbaoPage: Page | null = null
+  let wenxinPage: Page | null = null
   // 修词页面惰性创建,只在出图失败时才建会话
   let fixPage: Page | null = null
+  // 即梦页面惰性创建，积分不可用时完全不打开
+  let jimengPage: Page | null = null
+  let $jimeng: JimengPage | null = null
+
+  let useJimeng = true
+  const initialCreditState = await getJimengCreditState()
+  if (initialCreditState && initialCreditState.remainingCredit <= 0) {
+    useJimeng = false
+    console.log('[image] 即梦积分状态为 0，本次直接使用元宝')
+  }
 
   try {
-    const $wenxinPage = new WenxinPage(wenxinPage)
-    await $wenxinPage.newSession()
-    const $yuanbaoPage = new YuanBaoPage(yuanbaoPage)
+    let $yuanbaoPage: YuanBaoPage | null = null
     const $checkPage = new YuanBaoPage(checkPage)
     await $checkPage.newSession()
+    let $wenxinPage: WenxinPage | null = null
     let $fixPage: YuanBaoPage | null = null
 
     for (const task of tasks) {
@@ -81,64 +98,132 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
       while (tryTimes < 3 && !passed) {
         tryTimes++
 
-        // 元宝出图：每次出图都开新会话，避免前序图片/提示词影响本次结果
-        await yuanbaoPage.bringToFront()
-        await $yuanbaoPage.newSession()
-        await $yuanbaoPage.setImageMode()
-        await $yuanbaoPage.clearEditor()
-        const attachPath = task.attachPath?.()
-        if (attachPath) {
-          const file = await attachToFile({ type: 'file', path: attachPath })
-          await $yuanbaoPage.uploadImage(file)
-        }
-        await $yuanbaoPage.input(emphasizeRatio(prompt))
-        await $yuanbaoPage.send()
+        let generated: File | null = null
+        let engineUsed: 'jimeng' | 'yuanbao' | null = null
 
-        let src = ''
-        try {
-          src = await $yuanbaoPage.getImageAnswer()
-        } catch (e) {
-          const detail = e instanceof Error ? e.message : String(e)
-          console.log(
-            `[image] ${task.label} 第 ${tryTimes} 次出图失败，按提示词违规处理: ${detail}`,
-          )
-
-          // 调起修词 AI，改写提示词后回写并重跑
+        // 优先即梦；积分不足 / 不可用时回退元宝
+        if (useJimeng) {
           try {
-            if (!fixPage) {
-              fixPage = await getPage('fix-prompt-yuanbao')
-              $fixPage = new YuanBaoPage(fixPage)
+            if (!$jimeng) {
+              jimengPage = await getPage('gen-img-jimeng')
+              $jimeng = new JimengPage(jimengPage)
+              await $jimeng.ensureLogin()
+
+              const credit = await $jimeng.readCredit()
+              if (credit !== null) {
+                console.log(`[image] 即梦剩余积分：${credit}`)
+                if (credit <= 0) {
+                  await markJimengCreditExhausted(0)
+                  useJimeng = false
+                } else {
+                  await setJimengCreditState(credit)
+                }
+              }
             }
-            const fixed = await fixPrompt($fixPage!, prompt, task.sessionUrl?.())
-            if (fixed) {
-              prompt = fixed
-              await task.onPromptFixed?.(fixed)
-              console.log(`[image] ${task.label} 提示词已改写，重跑该任务`)
-            }
-          } catch (fixErr) {
-            console.error(
-              `[image] ${task.label} 修词失败: ${fixErr instanceof Error ? fixErr.message : String(fixErr)}`,
-            )
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error)
+            console.log(`[image] 即梦初始化失败，切换到元宝: ${detail}`)
+            useJimeng = false
           }
+        }
+
+        if (useJimeng && $jimeng) {
+          try {
+            await jimengPage!.bringToFront()
+            console.log(`[image] ${task.label} 第 ${tryTimes} 次使用即梦生成`)
+            generated = await $jimeng.generate(prompt, task.attachPath?.())
+            engineUsed = 'jimeng'
+            await consumeJimengCredit()
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error)
+            console.log(`[image] ${task.label} 即梦生成失败，切换到元宝: ${detail}`)
+            if (isJimengCreditError(detail)) {
+              await markJimengCreditExhausted()
+            }
+            useJimeng = false
+            generated = null
+          }
+        }
+
+        if (!generated) {
+          // 元宝出图：确定回退元宝后才打开元宝页面
+          if (!yuanbaoPage || !$yuanbaoPage) {
+            yuanbaoPage = await getPage('gen-img-yuanbao')
+            $yuanbaoPage = new YuanBaoPage(yuanbaoPage)
+          }
+          // 每次出图都开新会话，避免前序图片/提示词影响本次结果
+          await yuanbaoPage.bringToFront()
+          await $yuanbaoPage.newSession()
+          await $yuanbaoPage.setImageMode()
+          await $yuanbaoPage.clearEditor()
+          const attachPath = task.attachPath?.()
+          if (attachPath) {
+            const file = await attachToFile({ type: 'file', path: attachPath })
+            await $yuanbaoPage.uploadImage(file)
+          }
+          await $yuanbaoPage.input(emphasizeRatio(prompt))
+          await $yuanbaoPage.send()
+
+          let src = ''
+          try {
+            src = await $yuanbaoPage.getImageAnswer()
+          } catch (e) {
+            const detail = e instanceof Error ? e.message : String(e)
+            console.log(
+              `[image] ${task.label} 第 ${tryTimes} 次元宝出图失败，按提示词违规处理: ${detail}`,
+            )
+
+            // 调起修词 AI，改写提示词后回写并重跑
+            try {
+              if (!fixPage) {
+                fixPage = await getPage('fix-prompt-yuanbao')
+                $fixPage = new YuanBaoPage(fixPage)
+              }
+              const fixed = await fixPrompt($fixPage!, prompt, task.sessionUrl?.())
+              if (fixed) {
+                prompt = fixed
+                await task.onPromptFixed?.(fixed)
+                console.log(`[image] ${task.label} 提示词已改写，重跑该任务`)
+              }
+            } catch (fixErr) {
+              console.error(
+                `[image] ${task.label} 修词失败: ${fixErr instanceof Error ? fixErr.message : String(fixErr)}`,
+              )
+            }
+            continue
+          }
+
+          // 文心去水印：确定走元宝后才获取文心页面
+          if (!$wenxinPage) {
+            wenxinPage = await getPage('gen-img-yuanbao-wenxin')
+            $wenxinPage = new WenxinPage(wenxinPage)
+            await $wenxinPage.newSession()
+          }
+          const yuanbaoImage = await attachToFile({ type: 'url', path: src, filename: 'image.png' })
+          let wenxinResult = ''
+          try {
+            wenxinResult = await removeWaterMark($wenxinPage, yuanbaoImage)
+          } catch (e) {
+            console.log(
+              `[image] ${task.label} 第 ${tryTimes} 次去水印失败: ${(e as Error).message}`,
+            )
+            continue
+          }
+
+          generated = await attachToFile({
+            type: 'url',
+            path: wenxinResult,
+            filename: 'image.png',
+          })
+          engineUsed = 'yuanbao'
+        }
+
+        if (!generated) {
+          console.error(`[image] ${task.label} 未生成图片，跳过本次尝试`)
           continue
         }
 
-        // 文心去水印
-        const yuanbaoImage = await attachToFile({ type: 'url', path: src, filename: 'image.png' })
-        let wenxinResult = ''
-        try {
-          wenxinResult = await removeWaterMark($wenxinPage, yuanbaoImage)
-        } catch (e) {
-          console.log(`[image] ${task.label} 第 ${tryTimes} 次去水印失败: ${(e as Error).message}`)
-          continue
-        }
-
-        // 校验
-        const file = await attachToFile({
-          type: 'url',
-          path: wenxinResult,
-          filename: 'image.png',
-        })
+        const file = generated
         const check = await checkImage($checkPage, file, prompt)
         const brief = check.checks
           .map((c) =>
@@ -146,7 +231,7 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
           )
           .join(' ')
         console.log(
-          `[image] ${task.label} 第 ${tryTimes} 次校验结果(pass=${check.pass}, score=${check.score}): ${brief}`,
+          `[image] ${task.label} 第 ${tryTimes} 次校验结果(engine=${engineUsed ?? 'unknown'}, pass=${check.pass}, score=${check.score}): ${brief}`,
         )
 
         if (!best || check.score > best.score) {
@@ -190,11 +275,19 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
 
     return results
   } finally {
-    await releasePage(yuanbaoPage)
-    await releasePage(wenxinPage)
+    if (yuanbaoPage) await releasePage(yuanbaoPage)
+    if (wenxinPage) await releasePage(wenxinPage)
     await releasePage(checkPage)
     if (fixPage) await releasePage(fixPage)
+    if (jimengPage) await releasePage(jimengPage)
   }
+}
+
+/** 判断即梦错误是否属于积分不足 */
+function isJimengCreditError(message: string): boolean {
+  return ['积分不足', '积分不够', '积分已用完', '积分用完'].some((keyword) =>
+    message.includes(keyword),
+  )
 }
 
 /**
