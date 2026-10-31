@@ -114,7 +114,7 @@ export default class ToutiaoPage {
 
     // 收集完成后刷新重置,下一轮输入不受本轮残留干扰
     await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 })
-    await this.page.waitForTimeout(300)
+    await this.page.waitForTimeout(2000)
     await this.hideMasks()
 
     if (!items.length) return []

@@ -222,10 +222,11 @@ export default class GenerateImageRole extends BaseRole {
             break
           }
 
-          // 不通过:采纳 suggestion 调整提示词,重跑当前 task
-          if (check.suggestion) {
-            prompt = `${prompt}\n补充要求：${check.suggestion}`
-            console.log(`[gen-image] 采纳校验建议，调整提示词后重试: ${check.suggestion}`)
+          // 不通过:校验返回的 suggestion 即调整后的完整提示词，直接用它重跑
+          const suggestion = check.suggestion.trim()
+          if (suggestion) {
+            prompt = suggestion
+            console.log(`[gen-image] 采用校验返回的最终提示词重跑: ${suggestion}`)
           }
         }
 

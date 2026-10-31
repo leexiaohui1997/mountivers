@@ -18,6 +18,7 @@ enum ArticleStatus {
   DATA_DONE
   IMAGE_DONE
   PUBLISHED
+  FAILED
 }
 
 model Book {
@@ -35,12 +36,26 @@ model Book {
 }
 
 model Article {
-  id        String        @id @default(cuid())
-  index     Int
-  data      Json?
-  bookId    String
-  book      Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  status    ArticleStatus @default(READY)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id         String        @id @default(cuid())
+  index      Int
+  data       Json?
+  bookId     String
+  book       Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  status     ArticleStatus @default(READY)
+  /**
+   * 已失败的生成尝试次数；达到上限后置 FAILED
+   */
+  attempts   Int           @default(0)
+  /**
+   * 最近一次失败原因，便于排查与人工重置
+   */
+  lastError  String?
+  /**
+   * 成稿生成所用的元宝会话地址，便于回溯与续聊
+   */
+  sessionUrl String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([bookId, index])
 }

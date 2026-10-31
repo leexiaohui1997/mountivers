@@ -67,12 +67,14 @@ export default class BookOverview extends BaseRole {
         },
       })
 
-      await tx.article.createMany({
-        data: data.articlePlan.map((item) => ({
-          index: item.no,
-          bookId: book.id,
-        })),
-      })
+      // 已存在则保留（可能已生成成稿/图片），避免重复占位
+      for (const item of data.articlePlan) {
+        await tx.article.upsert({
+          where: { bookId_index: { bookId: book.id, index: item.no } },
+          update: {},
+          create: { index: item.no, bookId: book.id },
+        })
+      }
     })
 
     console.log(

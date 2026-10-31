@@ -13,7 +13,7 @@ export const CheckJsonSchema = z.object({
       reason: z.string(),
     }),
   ),
-  /** 重新生成时的提示词调整建议 */
+  /** 调整后的完整生图提示词，可直接用于重新出图；整体合格时为空字符串 */
   suggestion: z.string(),
 })
 
