@@ -1,6 +1,8 @@
 import { CopyOutlined, EyeOutlined } from '@ant-design/icons'
 import { App as AntdApp, Button, Card, Col, Image, Row, Space, Tag, Typography } from 'antd'
 
+import { copyText } from '../utils/clipboard'
+
 import type { WtxReportItem } from '../types/wtx-report'
 
 interface WtxCardProps {
@@ -13,11 +15,12 @@ export function WtxCard({ item, index, onOpen }: WtxCardProps) {
   const { message } = AntdApp.useApp()
 
   const copyContent = async () => {
-    try {
-      await navigator.clipboard.writeText(item.content)
+    const copied = await copyText(item.content)
+    if (copied) {
       void message.success('文案已复制')
-    } catch {
-      void message.error('复制失败，请手动选择文案')
+    } else {
+      void message.warning('自动复制失败，已打开详情，请长按文案复制')
+      onOpen(item)
     }
   }
 

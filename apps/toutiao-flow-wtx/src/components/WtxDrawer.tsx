@@ -12,6 +12,8 @@ import {
   Typography,
 } from 'antd'
 
+import { copyText } from '../utils/clipboard'
+
 import { resolveAssetUrl } from './WtxCard'
 
 import type { WtxReportItem } from '../types/wtx-report'
@@ -26,11 +28,11 @@ export function WtxDrawer({ item, onClose }: WtxDrawerProps) {
 
   const copyContent = async () => {
     if (!item) return
-    try {
-      await navigator.clipboard.writeText(item.content)
+    const copied = await copyText(item.content)
+    if (copied) {
       void message.success('文案已复制')
-    } catch {
-      void message.error('复制失败，请手动选择文案')
+    } else {
+      void message.warning('自动复制失败，请打开详情后长按文案复制')
     }
   }
 
