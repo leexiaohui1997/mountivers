@@ -3,6 +3,7 @@ import { extname } from 'node:path'
 import { getJimengCreditState } from '../utils/jimeng-credit.js'
 
 import JimengAiPageEngine from './engines/jimeng.js'
+import QianwenAiPageEngine from './engines/qianwen.js'
 import WenxinAiPageEngine from './engines/wenxin.js'
 import YuanbaoAiPageEngine from './engines/yuanbao.js'
 
@@ -24,9 +25,11 @@ export function normalizeExt(ext: string | null | undefined): string {
   return (fromPath || value).replace(/^\./, '')
 }
 
-/** 目前只有 PDF 走元宝；新增引擎时在这里注册即可 */
+/** 书籍后缀 → 文本引擎；新增引擎时在这里注册即可 */
 const ENGINE_FACTORIES: Record<string, () => AiPage> = {
-  pdf: () => new YuanbaoAiPageEngine(),
+  pdf: () => new QianwenAiPageEngine(),
+  epub: () => new QianwenAiPageEngine(),
+  mobi: () => new QianwenAiPageEngine(),
 }
 
 /** 会话域名 → 引擎工厂；用于沿用书籍历史会话 */
@@ -37,6 +40,7 @@ const SESSION_ENGINE_FACTORIES: Array<{
   { host: 'yuanbao.tencent.com', create: () => new YuanbaoAiPageEngine() },
   { host: 'jimeng.jianying.com', create: () => new JimengAiPageEngine() },
   { host: 'wenxin.baidu.com', create: () => new WenxinAiPageEngine() },
+  { host: 'qianwen.com', create: () => new QianwenAiPageEngine() },
 ]
 
 /** 根据 sessionUrl 的域名判断原本使用的是哪个引擎 */

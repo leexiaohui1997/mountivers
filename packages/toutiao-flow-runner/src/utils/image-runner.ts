@@ -1,5 +1,6 @@
 import { AiPageAdapter } from '../ai/adapter.js'
 import JimengAiPageEngine, { JimengCreditError } from '../ai/engines/jimeng.js'
+import QianwenAiPageEngine from '../ai/engines/qianwen.js'
 import WenxinAiPageEngine from '../ai/engines/wenxin.js'
 import YuanbaoAiPageEngine from '../ai/engines/yuanbao.js'
 import { getImageEngine } from '../ai/helper.js'
@@ -118,7 +119,7 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
 
   const results: ImageTaskResult[] = []
   const manager = new ImageAiManager(await getImageEngine())
-  const checkAi = new AiPageAdapter(new YuanbaoAiPageEngine())
+  const checkAi = new AiPageAdapter(new QianwenAiPageEngine())
 
   let wenxinAi: Ai | null = null
   let fixAi: Ai | null = null
