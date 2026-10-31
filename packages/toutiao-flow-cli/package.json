@@ -7,7 +7,8 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prebuild": "pnpm -F @toutiao-flow/db db:g"
   },
   "dependencies": {
     "@prisma/adapter-libsql": "^7.10.0",

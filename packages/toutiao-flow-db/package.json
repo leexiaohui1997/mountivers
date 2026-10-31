@@ -17,8 +17,7 @@
     "db:validate": "prisma validate",
     "db:format": "prisma format",
     "pre-commit": "pnpm run db:validate",
-    "lint-staged:format": "pnpm run db:format",
-    "build": "pnpm run db:g"
+    "lint-staged:format": "pnpm run db:format"
   },
   "dependencies": {
     "@prisma/adapter-libsql": "^7.10.0",
