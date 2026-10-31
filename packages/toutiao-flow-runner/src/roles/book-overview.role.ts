@@ -109,7 +109,7 @@ export default class BookOverview extends BaseRole {
       const check = isOverviewJson(overviewJson, (reason) => (failReason = reason))
       if (!check) {
         await $page.clearEditor()
-        await $page.input(`json 格式错误，请调整：${failReason}`)
+        await $page.input(`概览校验未通过，请调整后重新输出完整 overview JSON：${failReason}`)
         await $page.send()
         continue
       }

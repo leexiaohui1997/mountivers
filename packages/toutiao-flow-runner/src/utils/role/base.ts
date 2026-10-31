@@ -3,6 +3,8 @@ export interface RoleOptions {
   cron?: string
   /** 上次 run 未结束时,本次到点是否在它结束后补跑一次(多次到点合并)。默认 false(跳过本次)。 */
   waitPrevious?: boolean
+  /** 冻结截止时间；有值且晚于当前时间时，调度器跳过该角色。默认 null。 */
+  freezeUntil?: Date | null
 }
 
 /**
@@ -14,10 +16,16 @@ export default class BaseRole {
   readonly cron?: string
   /** 是否需要在上次 run 结束后补跑(见 RoleOptions.waitPrevious)。 */
   readonly waitPrevious: boolean
+  /**
+   * 冻结截止时间；有值且晚于当前时间时，调度器不执行该角色。
+   * 可在运行时由角色或外部逻辑修改，null 表示未冻结。
+   */
+  freezeUntil: Date | null
 
   constructor(opts?: RoleOptions) {
     this.cron = opts?.cron
     this.waitPrevious = opts?.waitPrevious ?? false
+    this.freezeUntil = opts?.freezeUntil ?? null
   }
 
   /** 角色的执行逻辑,由调度器在到点时调用。 */

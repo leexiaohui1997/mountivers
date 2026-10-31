@@ -1,5 +1,15 @@
 import { z } from 'zod'
 
+/** 头条合集名称的最小长度 */
+export const MIN_COLLECTION_NAME_LENGTH = 5
+
+/** 合集名（含候选）：去空格后不少于 5 个字 */
+const CollectionNameSchema = z
+  .string()
+  .refine((value) => Array.from(value.trim()).length >= MIN_COLLECTION_NAME_LENGTH, {
+    message: `合集名称不少于 ${MIN_COLLECTION_NAME_LENGTH} 个字`,
+  })
+
 /** 单章概览 */
 const ChapterSchema = z.object({
   index: z.number(),
@@ -21,8 +31,8 @@ export const OverviewJsonSchema = z.object({
   theme: z.string(),
   chapters: z.array(ChapterSchema),
 
-  collectionNameCandidates: z.array(z.string()),
-  collectionName: z.string(),
+  collectionNameCandidates: z.array(CollectionNameSchema),
+  collectionName: CollectionNameSchema,
   collectionDesc: z.string(),
 
   collectionCoverPrompt: z.string(),

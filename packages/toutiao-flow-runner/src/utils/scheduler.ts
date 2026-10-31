@@ -39,6 +39,12 @@ export class Scheduler {
       if (!rt || rt.nextRunAt === undefined) continue // 无 cron:不参与自动调度
       if (now < rt.nextRunAt) continue
 
+      // 冻结期内不执行；同时推进下次触发时间，避免解冻后补跑历史触发
+      if (role.freezeUntil && role.freezeUntil.getTime() > now) {
+        rt.nextRunAt = cronNext(role.cron!, now)
+        continue
+      }
+
       fired.push(role)
       // 基于 now 重算下次,避免停机/积压导致的历史触发堆积(misfire 不补发)
       rt.nextRunAt = cronNext(role.cron!, now)

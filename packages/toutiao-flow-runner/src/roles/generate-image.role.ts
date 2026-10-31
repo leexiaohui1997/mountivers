@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
 import { BookStatus } from '@toutiao-flow/db'
@@ -46,7 +45,7 @@ export default class GenerateImageRole extends BaseRole {
         tasks.push({
           label: `toutiao-cover:${book.id}`,
           prompt: () => overview.collectionCoverPrompt,
-          outputPath: () => path.resolve(IMAGE_DOWNLOAD_DIR, `${book.id}/${randomUUID()}.png`),
+          outputPath: () => path.resolve(IMAGE_DOWNLOAD_DIR, book.id, 'cover.png'),
           sessionUrl: () => book.sessionUrl,
           onPromptFixed: async (fixedPrompt) => {
             overview.collectionCoverPrompt = fixedPrompt
@@ -73,7 +72,7 @@ export default class GenerateImageRole extends BaseRole {
         tasks.push({
           label: `xhs-cover:${book.id}`,
           prompt: () => overview.xhsCollectionCoverPrompt,
-          outputPath: () => path.resolve(IMAGE_DOWNLOAD_DIR, `${book.id}/${randomUUID()}.png`),
+          outputPath: () => path.resolve(IMAGE_DOWNLOAD_DIR, book.id, 'xhs-cover.png'),
           attachPath: () => toutiaoCoverPath,
           sessionUrl: () => book.sessionUrl,
           onPromptFixed: async (fixedPrompt) => {

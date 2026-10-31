@@ -2,7 +2,11 @@ import { Page } from 'playwright'
 
 const TOUTIAO_PUBLISH_URL = 'https://mp.toutiao.com/profile_v4/graphic/publish'
 const TOUTIAO_HOME_URL = 'https://mp.toutiao.com/'
+const TOUTIAO_COLLECTION_LIST_URL = 'https://mp.toutiao.com/profile_v4/graphic/collections'
+const TOUTIAO_COLLECTION_CREATE_URL =
+  'https://mp.toutiao.com/profile_v4/graphic/collection-publish?from=collection_publish'
 const LOGIN_COOKIE_NAMES = ['sessionid', 'sessionid_ss']
+const COLLECTION_POLL_INTERVAL_MS = 2000
 
 export type TopicItem = {
   name: string
@@ -122,5 +126,98 @@ export default class ToutiaoPage {
       parseDiscussionCount(a.meta) >= parseDiscussionCount(b.meta) ? a : b,
     )
     return [best]
+  }
+
+  /** 列表页是否已存在同名合集（不区分审核/发布状态） */
+  async hasCollection(name: string): Promise<boolean> {
+    return await this.page
+      .locator('.collection-card-item')
+      .filter({ hasText: name })
+      .first()
+      .isVisible()
+      .catch(() => false)
+  }
+
+  async openCollectionList(): Promise<void> {
+    await this.page.goto(TOUTIAO_COLLECTION_LIST_URL, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    })
+    await this.page.waitForTimeout(2000)
+  }
+
+  /**
+   * 确保头条合集存在：
+   * - 列表已有同名合集（任意状态）→ 直接成功；
+   * - 不存在 → 创建 → 回列表轮询，出现即成功。
+   */
+  async ensureCollection(name: string, coverPath: string): Promise<void> {
+    await this.openCollectionList()
+    if (await this.hasCollection(name)) {
+      console.log(`[toutiao] 合集《${name}》已存在，跳过创建`)
+      return
+    }
+
+    await this.createCollection(name, coverPath)
+    await this.waitUntilCollectionExists(name)
+  }
+
+  private async createCollection(name: string, coverPath: string): Promise<void> {
+    console.log(`[toutiao] 合集《${name}》不存在，开始创建`)
+
+    await this.page.goto(TOUTIAO_COLLECTION_CREATE_URL, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    })
+    await this.page.waitForTimeout(2000)
+
+    await this.page.locator('input[placeholder="请输入"]').fill(name)
+    await this.page.waitForTimeout(300)
+
+    const fileInput = this.page.locator('input[type="file"][accept*="image"]')
+    await fileInput.setInputFiles(coverPath)
+
+    await this.page
+      .locator('.byte-modal button:has-text("确定")')
+      .waitFor({ state: 'visible', timeout: 120000 })
+    await this.page
+      .locator('.byte-modal .previews .preview.active')
+      .waitFor({ state: 'visible', timeout: 120000 })
+
+    // 上传响应在点击“确定”后才发起；提前注册，避免响应先到导致漏等
+    const uploadResponse = this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/spice/image?upload_source') && response.status() === 200,
+      { timeout: 120000 },
+    )
+    // 提前失败时避免未处理的 rejection
+    uploadResponse.catch(() => undefined)
+
+    await this.page.locator('.byte-modal button:has-text("确定")').click()
+    await this.page.waitForTimeout(1000)
+    const response = await uploadResponse
+    console.log(`[toutiao] 合集封面已上传 (${response.status()})`)
+    await this.page.waitForTimeout(1000)
+
+    await this.page.locator('button:has-text("创建合集")').last().click()
+    await this.page.waitForTimeout(3000)
+  }
+
+  /** 轮询列表页，等待同名合集出现（不看是否已发布） */
+  async waitUntilCollectionExists(name: string, timeoutMs = 2 * 60 * 1000): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    await this.openCollectionList()
+
+    while (Date.now() < deadline) {
+      if (await this.hasCollection(name)) {
+        console.log(`[toutiao] 合集《${name}》已出现在列表，创建成功`)
+        return
+      }
+      await this.page.waitForTimeout(COLLECTION_POLL_INTERVAL_MS)
+      await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 })
+      await this.page.waitForTimeout(COLLECTION_POLL_INTERVAL_MS)
+    }
+
+    throw new Error(`等待合集《${name}》出现超时（${Math.round(timeoutMs / 1000)}s）`)
   }
 }
