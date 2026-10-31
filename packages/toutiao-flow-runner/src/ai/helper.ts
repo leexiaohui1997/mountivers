@@ -27,7 +27,7 @@ export function normalizeExt(ext: string | null | undefined): string {
 
 /** 书籍后缀 → 文本引擎；新增引擎时在这里注册即可 */
 const ENGINE_FACTORIES: Record<string, () => AiPage> = {
-  pdf: () => new QianwenAiPageEngine(),
+  pdf: () => new YuanbaoAiPageEngine(),
   epub: () => new QianwenAiPageEngine(),
   mobi: () => new QianwenAiPageEngine(),
 }
