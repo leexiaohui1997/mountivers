@@ -13,6 +13,42 @@ export type TopicItem = {
   meta: string
 }
 
+/**
+ * 隐藏头条页面可能拦截点击的抽屉与遮罩。
+ *
+ * 默认连业务弹窗（`.byte-modal*`）一起隐藏，适用于只做输入的旧流程；
+ * 需要读取弹窗内容或点击弹窗按钮的流程（如发布页）应传 `{ hideModals: false }`，
+ * 否则「无法发布」限额提示会被藏掉，「确认发布」按钮也会点不到。
+ */
+export async function hideToutiaoMasks(
+  page: Page,
+  opts: { hideModals?: boolean } = {},
+): Promise<void> {
+  const hideModals = opts.hideModals ?? true
+
+  await page.evaluate((withModals: boolean) => {
+    const selectors = [
+      '.ai-assistant-drawer',
+      '.byte-drawer-mask',
+      '.byte-modal-mask',
+      '.byte-mask',
+      '.byte-drawer',
+      '.byte-popup',
+      "[class*='byte-drawer']",
+      "[class*='byte-mask']",
+    ]
+    if (withModals) {
+      selectors.push('.byte-modal-wrapper', "[class*='byte-modal']")
+    }
+
+    selectors.forEach((s) => {
+      document.querySelectorAll(s).forEach((el) => {
+        ;(el as HTMLElement).style.display = 'none'
+      })
+    })
+  }, hideModals)
+}
+
 /** 解析讨论数文本为数值,便于比较热度:"1.6万讨论"→16000,"3讨论"→3,""→0 */
 export function parseDiscussionCount(meta: string): number {
   const matched = meta.replace(/,/g, '').match(/([\d.]+)\s*(万|亿)?/)
@@ -45,25 +81,7 @@ export default class ToutiaoPage {
 
   /** 隐藏头条发布页上可能拦截点击/遮挡的弹窗、抽屉、遮罩 */
   private async hideMasks() {
-    await this.page.evaluate(() => {
-      const selectors = [
-        '.ai-assistant-drawer',
-        '.byte-drawer-mask',
-        '.byte-modal-wrapper',
-        '.byte-modal-mask',
-        '.byte-mask',
-        '.byte-drawer',
-        '.byte-popup',
-        "[class*='byte-modal']",
-        "[class*='byte-drawer']",
-        "[class*='byte-mask']",
-      ]
-      selectors.forEach((s) => {
-        document.querySelectorAll(s).forEach((el) => {
-          ;(el as HTMLElement).style.display = 'none'
-        })
-      })
-    })
+    await hideToutiaoMasks(this.page)
   }
 
   /** 打开发布页并隐藏可能拦截点击的弹窗/遮罩 */

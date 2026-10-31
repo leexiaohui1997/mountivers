@@ -19,6 +19,7 @@ enum ArticleStatus {
   IMAGE_DONE
   IMAGE_FAILED
   PUBLISHED
+  PUBLISH_FAILED
   FAILED
 }
 
@@ -49,34 +50,52 @@ model Book {
 }
 
 model Article {
-  id             String        @id @default(cuid())
-  index          Int
-  data           Json?
-  bookId         String
-  book           Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  status         ArticleStatus @default(READY)
+  id               String        @id @default(cuid())
+  index            Int
+  data             Json?
+  bookId           String
+  book             Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  status           ArticleStatus @default(READY)
   /**
    * 已失败的生成尝试次数；仅用于观测，不设上限（成稿会一直重试到通过校验）
    */
-  attempts       Int           @default(0)
+  attempts         Int           @default(0)
   /**
    * 最近一次失败原因，便于排查与人工重置
    */
-  lastError      String?
+  lastError        String?
   /**
    * 配图生成失败的轮次；仅用于观测，不设上限（配图会一直重试到全部生成）
    */
-  imageAttempts  Int           @default(0)
+  imageAttempts    Int           @default(0)
   /**
    * 最近一次配图生成失败原因
    */
-  imageLastError String?
+  imageLastError   String?
   /**
    * 成稿生成所用的元宝会话地址，便于回溯与续聊
    */
-  sessionUrl     String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  sessionUrl       String?
+  /**
+   * 头条发布失败次数；达到上限后置 PUBLISH_FAILED
+   */
+  publishAttempts  Int           @default(0)
+  /**
+   * 最近一次头条发布失败原因
+   */
+  publishLastError String?
+  /**
+   * 头条实际发布时间
+   */
+  publishedAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@unique([bookId, index])
+}
+
+/// 通用键值状态表（如 toutiao-publish-limit）
+model AppState {
+  key   String  @id
+  value String?
 }

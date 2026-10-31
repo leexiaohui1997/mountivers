@@ -5,6 +5,8 @@ export interface RoleOptions {
   waitPrevious?: boolean
   /** 冻结截止时间；有值且晚于当前时间时，调度器跳过该角色。默认 null。 */
   freezeUntil?: Date | null
+  /** 调度优先级，数字越大越先执行。默认 0。 */
+  priority?: number
 }
 
 /**
@@ -21,11 +23,14 @@ export default class BaseRole {
    * 可在运行时由角色或外部逻辑修改，null 表示未冻结。
    */
   freezeUntil: Date | null
+  /** 调度优先级，数字越大越先执行。 */
+  priority: number
 
   constructor(opts?: RoleOptions) {
     this.cron = opts?.cron
     this.waitPrevious = opts?.waitPrevious ?? false
     this.freezeUntil = opts?.freezeUntil ?? null
+    this.priority = opts?.priority ?? 0
   }
 
   /** 角色的执行逻辑,由调度器在到点时调用。 */

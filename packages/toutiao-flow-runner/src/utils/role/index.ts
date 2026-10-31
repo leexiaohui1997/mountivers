@@ -44,6 +44,9 @@ export async function loadRoles(): Promise<BaseRole[]> {
       roles.push(instance)
     }
   }
+
+  // 优先级从高到低；同优先级保持文件扫描顺序（Array.sort 稳定）
+  roles.sort((a, b) => b.priority - a.priority)
   return roles
 }
 
