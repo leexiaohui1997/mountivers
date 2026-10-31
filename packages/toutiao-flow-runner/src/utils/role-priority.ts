@@ -32,8 +32,8 @@ export const ROLE_PRIORITY = {
   ARTICLE: 50,
   /** 封面生成：配图与合集的前置（批次任务，待拆分） */
   COVER_IMAGE: 40,
-  /** 话题收集：新书入口，长任务 */
-  TOPIC_COLLECT: 30,
+  /** 话题收集：为合集准备话题，优先级高于文章发布 */
+  TOPIC_COLLECT: 105,
   /** 书籍概览：新书入口，长任务，业务紧迫度最低 */
   BOOK_OVERVIEW: 20,
 } as const
