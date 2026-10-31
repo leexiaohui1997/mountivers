@@ -66,6 +66,14 @@ export class Scheduler {
 
   /** 并行执行入口:不 await,失败只记录日志,结束后按需补跑。 */
   private start(role: BaseRole, rt: Runtime): void {
+    // 冻结可能是在 run() 内部设置的（例如任务成功后冻结），
+    // 此时 finally 里的“补跑”必须重新检查，否则会绕过 tick 的冻结判断。
+    if (role.freezeUntil && role.freezeUntil.getTime() > Date.now()) {
+      rt.rerun = false
+      console.log(`[scheduler] ${role.constructor.name} 已冻结，跳过本次补跑`)
+      return
+    }
+
     rt.rerun = false
     rt.running = Promise.resolve()
       .then(() => role.run())
