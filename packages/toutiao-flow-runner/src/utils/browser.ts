@@ -77,3 +77,11 @@ export async function releasePage(page: Page) {
     pagesCache.delete(page)
   }
 }
+
+/**
+ * 统一的页面激活入口。
+ * 当前保持 page.bringToFront()；后续如需改成“不抬窗口”的焦点模拟，只改这里。
+ */
+export async function activatePage(page: Page): Promise<void> {
+  await page.bringToFront()
+}

@@ -5,7 +5,7 @@ import { isCheckJson, type CheckJson } from '../types/check.js'
 import { isFixPromptJson } from '../types/fix-prompt.js'
 
 import { attachToFile, saveFile } from './attach.js'
-import { getPage, releasePage } from './browser.js'
+import { activatePage, getPage, releasePage } from './browser.js'
 import { prisma } from './db.js'
 import {
   consumeJimengCredit,
@@ -129,7 +129,7 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
 
         if (useJimeng && $jimeng) {
           try {
-            await jimengPage!.bringToFront()
+            await activatePage(jimengPage!)
             console.log(`[image] ${task.label} 第 ${tryTimes} 次使用即梦生成`)
             generated = await $jimeng.generate(prompt, task.attachPath?.())
             engineUsed = 'jimeng'
@@ -152,7 +152,7 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
             $yuanbaoPage = new YuanBaoPage(yuanbaoPage)
           }
           // 每次出图都开新会话，避免前序图片/提示词影响本次结果
-          await yuanbaoPage.bringToFront()
+          await activatePage(yuanbaoPage)
           await $yuanbaoPage.newSession()
           await $yuanbaoPage.setImageMode()
           await $yuanbaoPage.clearEditor()
@@ -361,7 +361,7 @@ async function checkImage($checkPage: YuanBaoPage, file: File, prompt: string): 
 
 /** 文心一言去水印:粘贴图片 + "去水印"发送,最多重试 3 次,返回去水印后图片 URL */
 async function removeWaterMark($wenxinPage: WenxinPage, image: File): Promise<string> {
-  await $wenxinPage.page.bringToFront()
+  await activatePage($wenxinPage.page)
 
   let reTryTimes = 0
   while (reTryTimes < 3) {

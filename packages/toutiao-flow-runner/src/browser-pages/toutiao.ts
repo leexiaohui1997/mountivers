@@ -1,5 +1,7 @@
 import { Page } from 'playwright'
 
+import { activatePage } from '../utils/browser.js'
+
 const TOUTIAO_PUBLISH_URL = 'https://mp.toutiao.com/profile_v4/graphic/publish'
 const TOUTIAO_HOME_URL = 'https://mp.toutiao.com/'
 const TOUTIAO_COLLECTION_LIST_URL = 'https://mp.toutiao.com/profile_v4/graphic/collections'
@@ -87,7 +89,7 @@ export default class ToutiaoPage {
 
   /** 打开发布页并隐藏可能拦截点击的弹窗/遮罩 */
   async openPublishPage() {
-    await this.page.bringToFront()
+    await activatePage(this.page)
     await this.page.goto(TOUTIAO_PUBLISH_URL, {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
@@ -242,7 +244,7 @@ export default class ToutiaoPage {
 
   /** 打开草稿箱 */
   async openDraftPage(): Promise<void> {
-    await this.page.bringToFront()
+    await activatePage(this.page)
     await this.page.goto(TOUTIAO_DRAFT_URL, {
       waitUntil: 'domcontentloaded',
       timeout: 30000,

@@ -1,5 +1,7 @@
 import { resolve } from 'node:path'
 
+import { activatePage } from '../utils/browser.js'
+
 import { hideToutiaoMasks } from './toutiao.js'
 
 import type { Page } from 'playwright'
@@ -110,7 +112,7 @@ export default class ToutiaoPublishPage {
   }
 
   private async openPublishPage(): Promise<void> {
-    await this.page.bringToFront()
+    await activatePage(this.page)
     await this.page.goto(TOUTIAO_PUBLISH_URL, {
       waitUntil: 'domcontentloaded',
       timeout: 30000,

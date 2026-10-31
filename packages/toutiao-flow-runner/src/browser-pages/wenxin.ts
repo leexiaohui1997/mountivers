@@ -2,6 +2,8 @@ import path from 'node:path'
 
 import { Page } from 'playwright'
 
+import { activatePage } from '../utils/browser.js'
+
 const WENXIN_HOME = 'https://wenxin.baidu.com/'
 
 export default class WenxinPage {
@@ -31,7 +33,7 @@ export default class WenxinPage {
   }
 
   async newSession() {
-    await this.page.bringToFront()
+    await activatePage(this.page)
     await this.ensureLogin()
   }
 

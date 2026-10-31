@@ -1,5 +1,7 @@
 import { Page } from 'playwright'
 
+import { activatePage } from '../utils/browser.js'
+
 const YUANBAO_URL = 'https://yuanbao.tencent.com/'
 const NEW_SESSION_URL = `${YUANBAO_URL}chat/naQivTmsDa`
 const COPY_MAX_ATTEMPTS = 4
@@ -37,7 +39,7 @@ export default class YuanBaoPage {
   }
 
   async newSession(url?: string) {
-    await this.page.bringToFront()
+    await activatePage(this.page)
     await this.ensureLogin()
     const target = url && url.startsWith(YUANBAO_URL) ? url : NEW_SESSION_URL
     if (this.page.url() !== target) {
