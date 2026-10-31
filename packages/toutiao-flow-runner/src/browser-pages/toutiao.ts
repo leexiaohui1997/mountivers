@@ -5,6 +5,7 @@ const TOUTIAO_HOME_URL = 'https://mp.toutiao.com/'
 const TOUTIAO_COLLECTION_LIST_URL = 'https://mp.toutiao.com/profile_v4/graphic/collections'
 const TOUTIAO_COLLECTION_CREATE_URL =
   'https://mp.toutiao.com/profile_v4/graphic/collection-publish?from=collection_publish'
+const TOUTIAO_DRAFT_URL = 'https://mp.toutiao.com/profile_v4/manage/draft'
 const LOGIN_COOKIE_NAMES = ['sessionid', 'sessionid_ss']
 const COLLECTION_POLL_INTERVAL_MS = 2000
 
@@ -237,5 +238,43 @@ export default class ToutiaoPage {
     }
 
     throw new Error(`等待合集《${name}》出现超时（${Math.round(timeoutMs / 1000)}s）`)
+  }
+
+  /** 打开草稿箱 */
+  async openDraftPage(): Promise<void> {
+    await this.page.bringToFront()
+    await this.page.goto(TOUTIAO_DRAFT_URL, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    })
+    await this.page.waitForTimeout(2000)
+    await hideToutiaoMasks(this.page)
+  }
+
+  /** 循环删除草稿箱中的所有草稿，返回删除数量 */
+  async deleteAllDrafts(): Promise<number> {
+    let count = 0
+
+    while (true) {
+      const deleteButton = this.page.locator('a:has-text("删除"), button:has-text("删除")').first()
+      if (!(await deleteButton.isVisible().catch(() => false))) {
+        return count
+      }
+
+      await deleteButton.click()
+      await this.page.waitForTimeout(1000)
+
+      const confirmButton = this.page
+        .locator(
+          '.byte-modal-footer button:has-text("确定"), .byte-modal button:has-text("确定"), button:has-text("确认")',
+        )
+        .last()
+      await confirmButton.waitFor({ state: 'visible', timeout: 5000 })
+      await confirmButton.click()
+      await this.page.waitForTimeout(1500)
+
+      count++
+      console.log(`[delete-drafts] 已删除第 ${count} 条草稿`)
+    }
   }
 }
