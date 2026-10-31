@@ -24,29 +24,30 @@ enum ArticleStatus {
 }
 
 model Book {
-  id                         String     @id @default(cuid())
+  id                         String          @id @default(cuid())
   path                       String
   overview                   Json?
   articles                   Article[]
-  status                     BookStatus @default(READY)
+  microHeadlines             MicroHeadline[]
+  status                     BookStatus      @default(READY)
   sessionUrl                 String?
   toutiaoCoverPath           String?
   xhsCoverPath               String?
   /**
    * 头条合集是否已创建并确认存在
    */
-  toutiaoCollectionCreated   Boolean    @default(false)
+  toutiaoCollectionCreated   Boolean         @default(false)
   /**
    * 头条合集创建失败次数；达到上限后不再自动重试
    */
-  toutiaoCollectionAttempts  Int        @default(0)
+  toutiaoCollectionAttempts  Int             @default(0)
   /**
    * 最近一次头条合集创建失败原因
    */
   toutiaoCollectionLastError String?
   tags                       Json?
-  createdAt                  DateTime   @default(now())
-  updatedAt                  DateTime   @updatedAt
+  createdAt                  DateTime        @default(now())
+  updatedAt                  DateTime        @updatedAt
 }
 
 model Article {
@@ -98,4 +99,23 @@ model Article {
 model AppState {
   key   String  @id
   value String?
+}
+
+/// 微头条：以书籍为材料的独立短内容
+model MicroHeadline {
+  id             String   @id @default(uuid())
+  bookId         String
+  book           Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  data           Json?
+  /// 三张配图是否全部完成
+  imagesDone     Boolean  @default(false)
+  /// 生图失败次数，仅用于观测；不设上限
+  imageAttempts  Int      @default(0)
+  /// 最近一次生图失败原因
+  imageLastError String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([bookId])
+  @@index([imagesDone, createdAt])
 }
