@@ -10,7 +10,7 @@ CHILD_PID_FILE="$RUN_DIR/runner-child.pid"
 LOG_FILE=""
 
 LOG_FILE=$(ls -t "$LOG_DIR"/runner-*.log 2>/dev/null | head -1)
-[ -z "$LOG_FILE" ] && LOG_FILE="$LOG_DIR/runner-$(date +%Y-%m-%d).log"
+[ -z "$LOG_FILE" ] && LOG_FILE="$LOG_DIR/runner-$(date +%Y-%m-%d-%H-%M).log"
 
 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   echo "状态: 运行中"

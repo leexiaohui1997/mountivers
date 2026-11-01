@@ -6,7 +6,7 @@ RUNNER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUN_DIR="$RUNNER_DIR/.run"
 LOG_DIR="$RUN_DIR/logs"
 PID_FILE="$RUN_DIR/runner.pid"
-LOG_FILE="$LOG_DIR/runner-$(date +%Y-%m-%d).log"
+LOG_FILE="$LOG_DIR/runner-$(date +%Y-%m-%d-%H-%M).log"
 ENTRY="$RUNNER_DIR/dist/index.js"
 RUNNER_ENV="$RUNNER_DIR/.env"
 
