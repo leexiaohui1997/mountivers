@@ -1,8 +1,20 @@
 import { activatePage } from '../../utils/browser.js'
+import { isEngineLimited, markEngineLimited } from '../../utils/engine-limit.js'
+import { CreditLimitError } from '../error.js'
 import { AiPage } from '../types.js'
 
 const DOUBAO_URL = 'https://www.doubao.com/'
 const COPY_MAX_ATTEMPTS = 4
+
+/** 豆包额度恢复间隔：1 天 */
+export const DOUBAO_CREDIT_RECOVERY_MS = 24 * 60 * 60 * 1000
+
+export class DoubaoCreditLimitError extends CreditLimitError {
+  constructor(message = '豆包创作额度已用尽') {
+    super(message)
+    this.name = 'DoubaoCreditLimitError'
+  }
+}
 
 /**
  * 豆包引擎骨架。
@@ -216,6 +228,40 @@ export default class DoubaoAiPageEngine extends AiPage {
     const url = await image.getAttribute('src')
     if (!url) throw new Error('最新出图卡片 src 为空')
     return url
+  }
+
+  async disabled(): Promise<boolean> {
+    return isEngineLimited('doubao')
+  }
+
+  async checkCreditLimit(): Promise<void> {
+    await this.ensurePage()
+    const target = this.page
+      .locator('.v_list_row button .truncate:text-is("购买创作额度包")')
+      .first()
+    await target.waitFor({ state: 'attached', timeout: 0 })
+
+    const now = new Date()
+    const until = new Date(now.getTime() + DOUBAO_CREDIT_RECOVERY_MS)
+
+    try {
+      await markEngineLimited('doubao', {
+        reason: 'credit-exhausted',
+        until,
+        metadata: {
+          blockedAt: now.toISOString(),
+          recoveryMs: DOUBAO_CREDIT_RECOVERY_MS,
+        },
+      })
+      console.warn(`[doubao] 检测到额度限制，预计恢复时间: ${until.toISOString()}`)
+    } catch (error) {
+      // 状态写入失败不应掩盖额度限制本身
+      console.error(
+        `[doubao] 记录额度状态失败: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+
+    throw new DoubaoCreditLimitError()
   }
 
   private async clearFiles(): Promise<void> {

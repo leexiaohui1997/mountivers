@@ -9,7 +9,7 @@ export const JsonContentIssueSchema = z.object({
 
 export const JsonContentCheckSchema = z.object({
   pass: z.boolean(),
-  /** 是否检测到“书/作者/阅读”等书籍框架；概览中为 true 不一定不合格 */
+  /** 是否显式出现“书/作者/阅读”等书籍框架；不表示内容来源，概览中为 true 不一定不合格 */
   hasBookConcept: z.boolean(),
   issues: z.array(JsonContentIssueSchema),
 })

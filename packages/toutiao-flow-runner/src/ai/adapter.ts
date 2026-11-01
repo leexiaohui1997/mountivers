@@ -1,3 +1,5 @@
+import { attachToFile } from '../utils/attach.js'
+
 import {
   Ai,
   type AiPage,
@@ -13,6 +15,7 @@ import {
  * text2text 的 onResult 支持在同一会话内继续追问：
  * 回调中调用 append(args) 后，适配器会发送新的提示词、等待回答，
  * 并再次触发 onResult，直到某次回调不再调用 append。
+ * 所有追问都会自动把上一轮回复作为附件一起上传。
  */
 export class AiPageAdapter extends Ai {
   constructor(engine: AiPage) {
@@ -56,7 +59,21 @@ export class AiPageAdapter extends Ai {
           throw new Error('onResult 中 append 只能调用一次')
         }
         appended = true
-        next = args
+
+        const replyFile = await attachToFile({
+          type: 'markdown',
+          filename: '上一轮完整回复.md',
+          content: result,
+        })
+        const prompt = [
+          args.prompt,
+          '',
+          '补充说明：上一轮完整回复已作为附件「上一轮完整回复.md」上传。',
+          '请直接读取该附件中的完整内容，不要向用户索要原文，不要要求用户重新发送，也不要询问是否需要协助。',
+          '请根据上面的校验问题修正附件内容，并直接输出修正后的完整 JSON。',
+        ].join('\n')
+
+        next = { ...args, prompt, attaches: [...(args.attaches ?? []), replyFile] }
       })
 
       if (!next) return result
