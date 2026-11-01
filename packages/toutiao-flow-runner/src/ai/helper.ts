@@ -3,6 +3,7 @@ import { extname } from 'node:path'
 import { ENABLE_JSON_CONTENT_JUDGE } from '../utils/env.js'
 
 import { AiPageAdapter } from './adapter.js'
+import DoubaoTextAiPageEngine from './engines/doubao-text.js'
 import DoubaoAiPageEngine from './engines/doubao.js'
 import JimengAiPageEngine from './engines/jimeng.js'
 import KimiAiPageEngine from './engines/kimi.js'
@@ -32,6 +33,7 @@ export interface PickEngineOptions {
 /** 引擎注册表：新增引擎时在这里注册 */
 const ENGINE_FACTORIES: Array<() => AiPage> = [
   () => new QianwenAiPageEngine(),
+  () => new DoubaoTextAiPageEngine(),
   () => new DoubaoAiPageEngine(),
   () => new YuanbaoAiPageEngine(),
   () => new JimengAiPageEngine(),
