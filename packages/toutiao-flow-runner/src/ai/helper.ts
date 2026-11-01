@@ -28,9 +28,9 @@ export function normalizeExt(ext: string | null | undefined): string {
 
 /** 书籍后缀 → 文本引擎；新增引擎时在这里注册即可 */
 const ENGINE_FACTORIES: Record<string, () => AiPage> = {
-  pdf: () => new DoubaoAiPageEngine(),
-  epub: () => new DoubaoAiPageEngine(),
-  mobi: () => new DoubaoAiPageEngine(),
+  pdf: () => new QianwenAiPageEngine(),
+  epub: () => new QianwenAiPageEngine(),
+  mobi: () => new QianwenAiPageEngine(),
 }
 
 /** 会话域名 → 引擎工厂；用于沿用书籍历史会话 */
