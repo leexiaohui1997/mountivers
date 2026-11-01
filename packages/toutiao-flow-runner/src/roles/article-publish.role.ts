@@ -66,6 +66,9 @@ export default class ArticlePublishRole extends BaseRole {
           `[article-publish] 今日已发布 ${publishedToday} 篇，达到上限 ${DAILY_PUBLISH_LIMIT}，今日不再发布`,
         )
       }
+
+      this.freezeUntil = getNextLocalMidnight()
+      console.log(`[article-publish] 角色冻结至 ${this.freezeUntil.toISOString()}`)
       return
     }
     lastDailyLimitLogDay = null
