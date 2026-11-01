@@ -44,7 +44,31 @@ export function extractJsonBlocks(md: string): unknown[] {
   return blocks
 }
 
-/** 提取第一个 json/jsonc 代码块(无则 null)。 */
+/** 提取第一个 json/jsonc 代码块；没有代码块时兼容纯 JSON 回复。 */
 export function extractJsonBlock(md: string): unknown | null {
-  return extractJsonBlocks(md)[0] ?? null
+  const block = extractJsonBlocks(md)[0]
+  if (block !== undefined) return block
+
+  const trimmed = md.trim()
+  const firstBrace = trimmed.indexOf('{')
+  const lastBrace = trimmed.lastIndexOf('}')
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as unknown
+    } catch {
+      // 继续尝试数组
+    }
+  }
+
+  const firstBracket = trimmed.indexOf('[')
+  const lastBracket = trimmed.lastIndexOf(']')
+  if (firstBracket >= 0 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(trimmed.slice(firstBracket, lastBracket + 1)) as unknown
+    } catch {
+      return null
+    }
+  }
+
+  return null
 }
