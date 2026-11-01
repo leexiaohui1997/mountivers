@@ -18,10 +18,10 @@ import {
   getPublishLimitUntil,
   setPublishLimitUntil,
 } from '../utils/publish-limit.js'
+import { getPublishDateKey, getPublishSuccessCount } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
 import { mergePublishTags } from '../utils/tags.js'
-import { getStartOfLocalDay } from '../utils/time.js'
 import { countWords, WORD_THRESHOLD } from '../utils/word-count.js'
 
 /** 头条发布失败上限；达到后置 PUBLISH_FAILED */
@@ -50,16 +50,10 @@ export default class ArticlePublishRole extends BaseRole {
   priority = ROLE_PRIORITY.PUBLISH
 
   async run(): Promise<void> {
-    const startOfToday = getStartOfLocalDay()
-    const publishedToday = await prisma.article.count({
-      where: {
-        status: ArticleStatus.PUBLISHED,
-        publishedAt: { gte: startOfToday },
-      },
-    })
+    const publishedToday = await getPublishSuccessCount()
 
     if (publishedToday >= DAILY_PUBLISH_LIMIT) {
-      const day = startOfToday.toISOString()
+      const day = getPublishDateKey()
       if (lastDailyLimitLogDay !== day) {
         lastDailyLimitLogDay = day
         console.log(
@@ -200,7 +194,7 @@ export default class ArticlePublishRole extends BaseRole {
       return
     }
 
-    await this.markPublished(article.id)
+    await this.markPublished(article.id, !alreadyPublished)
     console.log(
       `[article-publish] 完成: book.id=${book.id}, 第${article.index}篇《${title}》 → ${ArticleStatus.PUBLISHED}${alreadyPublished ? '（此前已发布）' : ''}`,
     )
@@ -226,15 +220,27 @@ export default class ArticlePublishRole extends BaseRole {
     return blocks
   }
 
-  private async markPublished(articleId: string): Promise<void> {
-    await prisma.article.update({
-      where: { id: articleId },
-      data: {
-        status: ArticleStatus.PUBLISHED,
-        publishedAt: new Date(),
-        publishAttempts: 0,
-        publishLastError: null,
-      },
+  private async markPublished(articleId: string, countSuccess: boolean): Promise<void> {
+    const date = getPublishDateKey()
+
+    await prisma.$transaction(async (tx) => {
+      await tx.article.update({
+        where: { id: articleId },
+        data: {
+          status: ArticleStatus.PUBLISHED,
+          publishedAt: new Date(),
+          publishAttempts: 0,
+          publishLastError: null,
+        },
+      })
+
+      if (countSuccess) {
+        await tx.publishStat.upsert({
+          where: { date },
+          update: { successCount: { increment: 1 } },
+          create: { date, successCount: 1 },
+        })
+      }
     })
   }
 

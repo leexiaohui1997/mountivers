@@ -105,6 +105,13 @@ model AppState {
   value String?
 }
 
+/// 每日发布成功统计；date 为本地时区 YYYY-MM-DD
+model PublishStat {
+  date         String   @id
+  successCount Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
 /// 非即梦引擎的额度限制记录；有记录即表示当前处于限额状态
 model EngineLimit {
   /// 引擎标识，例如 qianwen / doubao
