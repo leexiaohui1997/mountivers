@@ -3,8 +3,16 @@ import {
   type JsonContentCheck,
   type JsonContentIssue,
 } from '../../types/json-check.js'
+import { attachToFile } from '../../utils/attach.js'
 import { extractJsonBlock } from '../../utils/markdown.js'
-import { renderTemplate } from '../../utils/template.js'
+import { renderToAttach } from '../../utils/template.js'
+
+import {
+  AttachmentMissingError,
+  ATTACHMENT_MISSING_INSTRUCTION,
+  parseAttachmentMissing,
+  type AttachmentMissing,
+} from './attachment-missing.js'
 
 import type { Ai } from '../types.js'
 
@@ -16,6 +24,9 @@ const KIND_LABELS: Record<JsonContentKind, string> = {
   'micro-headline': '微头条',
 }
 
+/** 判定附件连续缺失时，最多重开会话尝试的次数 */
+const MAX_ATTACHMENT_ATTEMPTS = 3
+
 export interface JudgeJsonContentOptions {
   kind: JsonContentKind
   data: unknown
@@ -26,38 +37,69 @@ export async function judgeJsonContent(
   ai: Ai,
   opts: JudgeJsonContentOptions,
 ): Promise<JsonContentCheck> {
-  let result: JsonContentCheck | undefined
-
-  await ai.text2text({
-    prompt: await renderTemplate('json-content-check.prompt', {
+  const promptFile = await renderToAttach(
+    'json-content-check.prompt',
+    {
       kind: opts.kind,
       kindLabel: KIND_LABELS[opts.kind],
-      json: JSON.stringify(opts.data, null, 2),
-    }),
-    onResult: async (answer, append) => {
-      const json = extractJsonBlock(answer)
-      if (!json) {
-        await append({ prompt: '请只返回合法的 JSON 代码块' })
-        return
-      }
-
-      let failReason = ''
-      if (!isJsonContentCheck(json, (reason) => (failReason = reason))) {
-        await append({
-          prompt: `判定结果 JSON 格式不符合要求，请修正后重新输出：\n${failReason}`,
-        })
-        return
-      }
-
-      result = json
     },
+    '文案检查提示词.md',
+  )
+  const dataFile = await attachToFile({
+    type: 'markdown',
+    filename: '待检查文案.json',
+    content: JSON.stringify(opts.data, null, 2),
   })
 
-  if (!result) {
+  let lastMissing: string[] = []
+
+  for (let attempt = 1; attempt <= MAX_ATTACHMENT_ATTEMPTS; attempt++) {
+    const state: {
+      result?: JsonContentCheck
+      missing: AttachmentMissing | null
+    } = { missing: null }
+
+    // 每次调用 text2text 都会重新 openSession；附件漏传时在判定逻辑内重开会话重试
+    await ai.text2text({
+      prompt: `请按照附件《文案检查提示词.md》检查附件《待检查文案.json》，只返回判定 JSON。${ATTACHMENT_MISSING_INSTRUCTION}`,
+      attaches: [promptFile, dataFile],
+      onResult: async (answer, append) => {
+        state.missing = parseAttachmentMissing(answer)
+        if (state.missing) return
+
+        const json = extractJsonBlock(answer)
+        if (!json) {
+          await append({ prompt: '请只返回合法的 JSON 代码块' })
+          return
+        }
+
+        let failReason = ''
+        if (!isJsonContentCheck(json, (reason) => (failReason = reason))) {
+          await append({
+            prompt: `判定结果 JSON 格式不符合要求，请修正后重新输出：\n${failReason}`,
+          })
+          return
+        }
+
+        state.result = json
+      },
+    })
+
+    if (state.missing) {
+      lastMissing = state.missing.missing ?? []
+      console.warn(
+        `[json-judge] ${opts.kind} 第 ${attempt}/${MAX_ATTACHMENT_ATTEMPTS} 次附件缺失，重开会话重试: ${
+          lastMissing.join('、') || '未知附件'
+        }`,
+      )
+      continue
+    }
+
+    if (state.result) return state.result
     throw new Error('JSON 文案判定失败：AI 未返回合法结果')
   }
 
-  return result
+  throw new AttachmentMissingError(lastMissing)
 }
 
 /** 判定失败时，拼成给生成 AI 的修复提示 */
@@ -82,6 +124,10 @@ export async function reviewJsonContent(
     const check = await judgeJsonContent(judgeAi, { kind, data })
     return { pass: check.pass, check }
   } catch (error) {
+    if (error instanceof AttachmentMissingError) {
+      throw error
+    }
+
     console.error(
       `[json-judge] ${kind} 判定失败，按通过处理: ${
         error instanceof Error ? error.message : String(error)
