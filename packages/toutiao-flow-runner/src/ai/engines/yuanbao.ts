@@ -11,7 +11,7 @@ const COPY_MAX_ATTEMPTS = 4
 export default class YuanbaoAiPageEngine extends AiPage {
   readonly name = 'yuanbao'
   readonly textPriority = 30
-  readonly workPriority = 20
+  readonly workPriority = 50
   readonly imagePriority = 10
   readonly watermarkPriority = null
   readonly supportedAttachmentExts = ['.pdf', '.md', '.txt', '.png', '.jpg', '.jpeg', '.webp']

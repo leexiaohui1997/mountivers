@@ -25,7 +25,7 @@ export default class KimiAiPageEngine extends AiPage {
   readonly name = 'kimi'
 
   readonly textPriority = 5
-  readonly workPriority = 25
+  readonly workPriority = 10
   readonly imagePriority = null
   readonly watermarkPriority = null
 

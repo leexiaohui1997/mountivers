@@ -11,7 +11,7 @@ const COPY_MAX_ATTEMPTS = 4
 export default class DoubaoTextAiPageEngine extends AiPage {
   readonly name: string = 'doubao-text'
   readonly textPriority: number | null = 10
-  readonly workPriority: number | null = 10
+  readonly workPriority: number | null = 20
   readonly imagePriority: number | null = null
   readonly watermarkPriority = null
   readonly supportedAttachmentExts = [
