@@ -1,8 +1,20 @@
 import { activatePage } from '../../utils/browser.js'
+import { isEngineLimited, markEngineLimited } from '../../utils/engine-limit.js'
+import { CreditLimitError } from '../error.js'
 import { AiPage } from '../types.js'
 
 const KIMI_URL = 'https://www.kimi.com/'
 const COPY_MAX_ATTEMPTS = 4
+
+/** Kimi 额度恢复间隔：暂按 5 小时估算，可按实际会员规则调整 */
+export const KIMI_CREDIT_RECOVERY_MS = 5 * 60 * 60 * 1000
+
+export class KimiCreditLimitError extends CreditLimitError {
+  constructor(message = 'Kimi 额度已用尽，需要升级会员') {
+    super(message)
+    this.name = 'KimiCreditLimitError'
+  }
+}
 
 /**
  * Kimi 引擎。
@@ -175,6 +187,38 @@ export default class KimiAiPageEngine extends AiPage {
   async getImageAnswer(): Promise<string> {
     // TODO: Kimi 当前不规划生图能力
     throw new Error('KimiAiPageEngine.getImageAnswer 尚未实现')
+  }
+
+  async disabled(): Promise<boolean> {
+    return isEngineLimited('kimi')
+  }
+
+  async checkCreditLimit(): Promise<void> {
+    await this.ensurePage()
+    const target = this.page.locator('.modal-container .km-button:has-text("去升级")').first()
+    await target.waitFor({ state: 'visible', timeout: 0 })
+
+    const now = new Date()
+    const until = new Date(now.getTime() + KIMI_CREDIT_RECOVERY_MS)
+
+    try {
+      await markEngineLimited('kimi', {
+        reason: 'credit-exhausted',
+        until,
+        metadata: {
+          blockedAt: now.toISOString(),
+          recoveryMs: KIMI_CREDIT_RECOVERY_MS,
+        },
+      })
+      console.warn(`[kimi] 检测到额度限制，预计恢复时间: ${until.toISOString()}`)
+    } catch (error) {
+      // 状态写入失败不应掩盖额度限制本身
+      console.error(
+        `[kimi] 记录额度状态失败: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+
+    throw new KimiCreditLimitError()
   }
 
   private async setModel() {

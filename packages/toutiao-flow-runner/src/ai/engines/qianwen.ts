@@ -1,5 +1,5 @@
 import { activatePage } from '../../utils/browser.js'
-import { getQianwenCreditState, recordQianwenCreditLimit } from '../../utils/qianwen-credit.js'
+import { isEngineLimited, markEngineLimited } from '../../utils/engine-limit.js'
 import { CreditLimitError } from '../error.js'
 import { AiPage } from '../types.js'
 
@@ -232,7 +232,7 @@ export default class QianwenAiPageEngine extends AiPage {
   }
 
   async disabled(): Promise<boolean> {
-    return (await getQianwenCreditState()) !== null
+    return isEngineLimited('qianwen')
   }
 
   async checkCreditLimit(): Promise<void> {
@@ -243,7 +243,16 @@ export default class QianwenAiPageEngine extends AiPage {
     await target.waitFor({ state: 'attached', timeout: 0 })
 
     try {
-      const until = await recordQianwenCreditLimit(QIANWEN_CREDIT_RECOVERY_MS)
+      const now = new Date()
+      const until = new Date(now.getTime() + QIANWEN_CREDIT_RECOVERY_MS)
+      await markEngineLimited('qianwen', {
+        reason: 'professional-membership',
+        until,
+        metadata: {
+          blockedAt: now.toISOString(),
+          recoveryMs: QIANWEN_CREDIT_RECOVERY_MS,
+        },
+      })
       console.warn(`[qianwen] 检测到额度限制，预计恢复时间: ${until.toISOString()}`)
     } catch (error) {
       // 状态写入失败不应掩盖额度限制本身

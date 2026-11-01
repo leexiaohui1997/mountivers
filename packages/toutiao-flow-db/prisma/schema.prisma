@@ -101,6 +101,23 @@ model AppState {
   value String?
 }
 
+/// 非即梦引擎的额度限制记录；有记录即表示当前处于限额状态
+model EngineLimit {
+  /// 引擎标识，例如 qianwen / doubao
+  engine    String    @id
+  /// 限额原因：credit-exhausted / professional-membership / manual
+  reason    String?
+  /// 进入限额状态的时间
+  limitedAt DateTime  @default(now())
+  /// 预计恢复时间；null 表示需要手动清除
+  until     DateTime?
+  /// 原始状态快照，例如 blockedAt / recoveryMs
+  metadata  Json?
+  updatedAt DateTime  @updatedAt
+
+  @@index([until])
+}
+
 /// 微头条：以书籍为材料的独立短内容
 model MicroHeadline {
   id             String   @id @default(uuid())
