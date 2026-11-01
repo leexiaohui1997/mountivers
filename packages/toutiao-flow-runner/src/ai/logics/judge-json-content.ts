@@ -30,6 +30,7 @@ export async function judgeJsonContent(
 
   await ai.text2text({
     prompt: await renderTemplate('json-content-check.prompt', {
+      kind: opts.kind,
       kindLabel: KIND_LABELS[opts.kind],
       json: JSON.stringify(opts.data, null, 2),
     }),
