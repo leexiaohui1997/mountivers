@@ -6,17 +6,19 @@ export const CheckJsonSchema = z.object({
   pass: z.boolean(),
   /** 0~100 综合评分；用于失败时挑选最佳结果，即使合格也必须给出 */
   score: z.number().min(0).max(100),
-  /** 画面是否仍存在水印/二维码/平台标识 */
+  /** 画面是否仍存在水印/平台水印；二维码和平台标识单独检查 */
   hasWatermark: z.boolean(),
-  /** 逐项检查结果,与模板 6 个校验维度一一对应 */
-  checks: z.array(
-    z.object({
-      name: z.string(),
-      pass: z.boolean(),
-      /** 不通过的具体原因；通过时可为空，也可写一条非阻塞的改进建议 */
-      reason: z.string(),
-    }),
-  ),
+  /** 逐项检查结果,与模板 7 个校验维度一一对应 */
+  checks: z
+    .array(
+      z.object({
+        name: z.string(),
+        pass: z.boolean(),
+        /** 不通过的具体原因；通过时可为空，也可写一条非阻塞的改进建议 */
+        reason: z.string(),
+      }),
+    )
+    .length(7),
   /** 调整后的完整生图提示词，可直接用于重新出图；整体合格时为空字符串 */
   suggestion: z.string(),
 })
