@@ -21,6 +21,7 @@ import {
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
 import { mergePublishTags } from '../utils/tags.js'
+import { getStartOfLocalDay } from '../utils/time.js'
 import { countWords, WORD_THRESHOLD } from '../utils/word-count.js'
 
 /** 头条发布失败上限；达到后置 PUBLISH_FAILED */
@@ -32,10 +33,16 @@ const COLLECTION_FREEZE_MS = 10 * 60 * 1000
 /** 发布成功后的角色冻结时长 */
 const SUCCESS_FREEZE_MS = 5 * 60 * 1000
 
+/** 每日发布文章数量上限 */
+const DAILY_PUBLISH_LIMIT = 47
+
 const PUBLISH_PAGE_ID = 'toutiao-publish'
 
 /** 上次打印的限额截止时间，避免每秒刷日志 */
 let lastLimitLogKey: string | null = null
+
+/** 上次打印每日数量上限的日期，避免每秒刷日志 */
+let lastDailyLimitLogDay: string | null = null
 
 export default class ArticlePublishRole extends BaseRole {
   cron = '* * * * * ?'
@@ -43,6 +50,26 @@ export default class ArticlePublishRole extends BaseRole {
   priority = ROLE_PRIORITY.PUBLISH
 
   async run(): Promise<void> {
+    const startOfToday = getStartOfLocalDay()
+    const publishedToday = await prisma.article.count({
+      where: {
+        status: ArticleStatus.PUBLISHED,
+        publishedAt: { gte: startOfToday },
+      },
+    })
+
+    if (publishedToday >= DAILY_PUBLISH_LIMIT) {
+      const day = startOfToday.toISOString()
+      if (lastDailyLimitLogDay !== day) {
+        lastDailyLimitLogDay = day
+        console.log(
+          `[article-publish] 今日已发布 ${publishedToday} 篇，达到上限 ${DAILY_PUBLISH_LIMIT}，今日不再发布`,
+        )
+      }
+      return
+    }
+    lastDailyLimitLogDay = null
+
     const limitUntil = await getPublishLimitUntil()
     if (limitUntil) {
       const key = limitUntil.toISOString()
