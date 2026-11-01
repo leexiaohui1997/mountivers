@@ -10,6 +10,7 @@ import { generateOverview } from '../ai/logics/generate-overview.js'
 import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { prisma } from '../utils/db.js'
+import { getPublishDateKey } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
@@ -59,6 +60,8 @@ export default class BookOverview extends BaseRole {
               judgeAi,
             })
 
+            const statDate = getPublishDateKey()
+
             await prisma.$transaction(async (tx) => {
               await tx.book.update({
                 where: { id: book.id },
@@ -77,6 +80,12 @@ export default class BookOverview extends BaseRole {
                   create: { index: item.no, bookId: book.id },
                 })
               }
+
+              await tx.publishStat.upsert({
+                where: { date: statDate },
+                update: { overviewCount: { increment: 1 } },
+                create: { date: statDate, overviewCount: 1 },
+              })
             })
 
             console.log(

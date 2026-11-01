@@ -107,9 +107,14 @@ model AppState {
 
 /// 每日发布成功统计；date 为本地时区 YYYY-MM-DD
 model PublishStat {
-  date         String   @id
-  successCount Int      @default(0)
-  updatedAt    DateTime @updatedAt
+  date            String   @id
+  successCount    Int      @default(0)
+  overviewCount   Int      @default(0)
+  articleCount    Int      @default(0)
+  imageCount      Int      @default(0)
+  collectionCount Int      @default(0)
+  bookDoneCount   Int      @default(0)
+  updatedAt       DateTime @updatedAt
 }
 
 /// 非即梦引擎的额度限制记录；有记录即表示当前处于限额状态

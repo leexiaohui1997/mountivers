@@ -11,6 +11,7 @@ import { isOverviewJson, type OverviewJson } from '../types/overview.js'
 import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { prisma } from '../utils/db.js'
+import { getPublishDateKey } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
@@ -137,15 +138,25 @@ export default class ArticleRole extends BaseRole {
       },
     })
 
-    await prisma.article.update({
-      where: { id: article.id },
-      data: {
-        data,
-        status: ArticleStatus.DATA_DONE,
-        attempts: 0,
-        lastError: null,
-        sessionUrl,
-      },
+    const statDate = getPublishDateKey()
+
+    await prisma.$transaction(async (tx) => {
+      await tx.article.update({
+        where: { id: article.id },
+        data: {
+          data,
+          status: ArticleStatus.DATA_DONE,
+          attempts: 0,
+          lastError: null,
+          sessionUrl,
+        },
+      })
+
+      await tx.publishStat.upsert({
+        where: { date: statDate },
+        update: { articleCount: { increment: 1 } },
+        create: { date: statDate, articleCount: 1 },
+      })
     })
 
     console.log(

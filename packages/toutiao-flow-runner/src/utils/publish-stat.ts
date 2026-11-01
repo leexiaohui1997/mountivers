@@ -25,3 +25,56 @@ export async function incrementPublishSuccess(now = new Date()): Promise<number>
   })
   return row.successCount
 }
+
+export type PublishStatCountField =
+  | 'overviewCount'
+  | 'articleCount'
+  | 'imageCount'
+  | 'collectionCount'
+  | 'bookDoneCount'
+
+/** 累加指定的发布统计字段 */
+export async function incrementPublishStatField(
+  field: PublishStatCountField,
+  now = new Date(),
+): Promise<void> {
+  const date = getPublishDateKey(now)
+
+  switch (field) {
+    case 'overviewCount':
+      await prisma.publishStat.upsert({
+        where: { date },
+        update: { overviewCount: { increment: 1 } },
+        create: { date, overviewCount: 1 },
+      })
+      return
+    case 'articleCount':
+      await prisma.publishStat.upsert({
+        where: { date },
+        update: { articleCount: { increment: 1 } },
+        create: { date, articleCount: 1 },
+      })
+      return
+    case 'imageCount':
+      await prisma.publishStat.upsert({
+        where: { date },
+        update: { imageCount: { increment: 1 } },
+        create: { date, imageCount: 1 },
+      })
+      return
+    case 'collectionCount':
+      await prisma.publishStat.upsert({
+        where: { date },
+        update: { collectionCount: { increment: 1 } },
+        create: { date, collectionCount: 1 },
+      })
+      return
+    case 'bookDoneCount':
+      await prisma.publishStat.upsert({
+        where: { date },
+        update: { bookDoneCount: { increment: 1 } },
+        create: { date, bookDoneCount: 1 },
+      })
+      return
+  }
+}

@@ -2,6 +2,7 @@ import { BookStatus } from '@toutiao-flow/db'
 
 import { prisma } from '../utils/db.js'
 import { deleteBook } from '../utils/delete-book.js'
+import { incrementPublishStatField } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
 import { getStartOfLocalDay } from '../utils/time.js'
 import { getWtxReportGeneratedAt } from '../utils/wtx-report.js'
@@ -31,6 +32,13 @@ export default class DeleteDoneBooksRole extends BaseRole {
         const deleted = await deleteBook(book.id)
         if (deleted) {
           console.log(`[delete-done-books] 已删除书籍: ${book.id} (${book.path})`)
+          await incrementPublishStatField('bookDoneCount').catch((error) => {
+            console.error(
+              `[delete-done-books] 记录完结统计失败: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            )
+          })
         }
       } catch (error) {
         console.error(

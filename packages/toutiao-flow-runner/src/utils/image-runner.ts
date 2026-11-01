@@ -14,6 +14,7 @@ import {
   markJimengCreditExhausted,
   setJimengCreditState,
 } from './jimeng-credit.js'
+import { incrementPublishStatField } from './publish-stat.js'
 
 import type { Ai, AiPage } from '../ai/types.js'
 import type { CheckJson } from '../types/check.js'
@@ -303,6 +304,13 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
           passed = true
           outputPath = task.outputPath()
           await saveFile(generated, outputPath)
+          await incrementPublishStatField('imageCount').catch((error) => {
+            console.error(
+              `[image] 记录生图落盘统计失败: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            )
+          })
           break
         }
 
@@ -318,6 +326,13 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
       if (!passed && best) {
         outputPath = task.outputPath()
         await saveFile(best.file, outputPath)
+        await incrementPublishStatField('imageCount').catch((error) => {
+          console.error(
+            `[image] 记录生图落盘统计失败: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          )
+        })
         passed = true
         console.warn(
           `[image] ${task.label} ${tryTimes} 次质检均未通过，采用最高分 ${best.score} 的结果: ${outputPath}`,

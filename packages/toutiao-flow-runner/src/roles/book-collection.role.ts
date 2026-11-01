@@ -7,6 +7,7 @@ import { isOverviewJson, MIN_COLLECTION_NAME_LENGTH } from '../types/overview.js
 import { browserQueue } from '../utils/browser-queue.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
+import { getPublishDateKey } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
@@ -97,13 +98,23 @@ export default class BookCollectionRole extends BaseRole {
       return
     }
 
-    await prisma.book.update({
-      where: { id: book.id },
-      data: {
-        toutiaoCollectionCreated: true,
-        toutiaoCollectionAttempts: 0,
-        toutiaoCollectionLastError: null,
-      },
+    const statDate = getPublishDateKey()
+
+    await prisma.$transaction(async (tx) => {
+      await tx.book.update({
+        where: { id: book.id },
+        data: {
+          toutiaoCollectionCreated: true,
+          toutiaoCollectionAttempts: 0,
+          toutiaoCollectionLastError: null,
+        },
+      })
+
+      await tx.publishStat.upsert({
+        where: { date: statDate },
+        update: { collectionCount: { increment: 1 } },
+        create: { date: statDate, collectionCount: 1 },
+      })
     })
     console.log(`[book-collection] 完成: book.id=${book.id}, 合集=《${name}》 → created=true`)
 
