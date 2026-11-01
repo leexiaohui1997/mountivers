@@ -30,6 +30,10 @@ model Book {
   articles                   Article[]
   microHeadlines             MicroHeadline[]
   status                     BookStatus      @default(READY)
+  /// 找不到引擎时的锁定时间；非空表示三个生成任务暂时跳过
+  noEngineLockedAt           DateTime?
+  /// 连续找不到引擎的次数
+  noEngineLockCount          Int             @default(0)
   sessionUrl                 String?
   toutiaoCoverPath           String?
   xhsCoverPath               String?

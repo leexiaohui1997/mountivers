@@ -9,6 +9,7 @@ import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateMicroHeadline } from '../ai/logics/generate-micro-headline.js'
 import { isMicroHeadlineData } from '../types/micro-headline.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
+import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
@@ -55,9 +56,12 @@ export default class MicroHeadlineRole extends BaseRole {
               sessionUrl: book.sessionUrl ?? undefined,
             })
             if (!engine) {
-              throw new Error(`不支持的书籍格式: ${book.path}`)
+              await lockBookForNoEngine(book.id)
+              console.warn(`[micro-headline] 找不到可用引擎，锁定 5 小时: book.id=${book.id}`)
+              return
             }
 
+            await clearBookNoEngineLock(book.id)
             const ai = new AiPageAdapter(engine)
             const judgeAi = await createJudgeAi()
             try {
@@ -123,6 +127,7 @@ export default class MicroHeadlineRole extends BaseRole {
       where: {
         status: { in: [BookStatus.PROCESSING, BookStatus.DONE] },
         overview: { not: Prisma.DbNull },
+        noEngineLockedAt: null,
       },
       select: {
         id: true,

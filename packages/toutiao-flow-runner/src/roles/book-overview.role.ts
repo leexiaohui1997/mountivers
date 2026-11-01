@@ -7,6 +7,7 @@ import { CreditLimitError } from '../ai/error.js'
 import { createJudgeAi, pickEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateOverview } from '../ai/logics/generate-overview.js'
+import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
@@ -21,6 +22,7 @@ export default class BookOverview extends BaseRole {
     const book = await prisma.book.findFirst({
       where: {
         status: BookStatus.READY,
+        noEngineLockedAt: null,
       },
       orderBy: {
         createdAt: 'asc',
@@ -42,10 +44,12 @@ export default class BookOverview extends BaseRole {
             sessionUrl: book.sessionUrl ?? undefined,
           })
           if (!engine) {
-            console.log(`[book-overview] 不支持的文件类型，跳过: ${book.path}`)
+            await lockBookForNoEngine(book.id)
+            console.log(`[book-overview] 找不到可用引擎，锁定 5 小时: ${book.path}`)
             return
           }
 
+          await clearBookNoEngineLock(book.id)
           const ai = new AiPageAdapter(engine)
           const judgeAi = await createJudgeAi()
           try {

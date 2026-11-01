@@ -8,6 +8,7 @@ import { createJudgeAi, pickEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateArticle } from '../ai/logics/generate-article.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
+import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
@@ -31,7 +32,10 @@ export default class ArticleRole extends BaseRole {
     const article = await prisma.article.findFirst({
       where: {
         status: ArticleStatus.READY,
-        book: { status: BookStatus.PROCESSING },
+        book: {
+          status: BookStatus.PROCESSING,
+          noEngineLockedAt: null,
+        },
       },
       orderBy: [{ book: { createdAt: 'asc' } }, { index: 'asc' }],
       include: { book: true },
@@ -73,10 +77,12 @@ export default class ArticleRole extends BaseRole {
             attachments: [book.path],
           })
           if (!engine) {
-            await this.markFailed(article.id, `不支持的书籍格式: ${book.path}`)
+            await lockBookForNoEngine(book.id)
+            console.warn(`[article] 找不到可用引擎，锁定 5 小时: book.id=${book.id}`)
             return
           }
 
+          await clearBookNoEngineLock(book.id)
           const ai = new AiPageAdapter(engine)
           const judgeAi = await createJudgeAi()
           try {
