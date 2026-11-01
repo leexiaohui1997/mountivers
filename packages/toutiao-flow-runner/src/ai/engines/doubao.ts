@@ -181,7 +181,7 @@ export default class DoubaoAiPageEngine extends AiPage {
 
     for (let attempt = 1; attempt <= COPY_MAX_ATTEMPTS; attempt++) {
       const msg = this.page.locator('.v_list_row [data-testid="receive_message"]').last()
-      const copyTrigger = msg.locator('[data-testid="message_action_copy"]')
+      const copyTrigger = msg.locator('[data-testid="message_action_copy"]').first()
       await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
       await msg.hover()
       await copyTrigger.scrollIntoViewIfNeeded()

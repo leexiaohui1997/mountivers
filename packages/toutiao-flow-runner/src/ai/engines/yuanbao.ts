@@ -14,17 +14,7 @@ export default class YuanbaoAiPageEngine extends AiPage {
   readonly workPriority = 20
   readonly imagePriority = 10
   readonly watermarkPriority = null
-  readonly supportedAttachmentExts = [
-    '.pdf',
-    '.epub',
-    '.mobi',
-    '.md',
-    '.txt',
-    '.png',
-    '.jpg',
-    '.jpeg',
-    '.webp',
-  ]
+  readonly supportedAttachmentExts = ['.pdf', '.md', '.txt', '.png', '.jpg', '.jpeg', '.webp']
   readonly sessionHosts = ['yuanbao.tencent.com']
 
   /** 元宝出图带水印 */

@@ -5,6 +5,7 @@ import { ENABLE_JSON_CONTENT_JUDGE } from '../utils/env.js'
 import { AiPageAdapter } from './adapter.js'
 import DoubaoAiPageEngine from './engines/doubao.js'
 import JimengAiPageEngine from './engines/jimeng.js'
+import KimiAiPageEngine from './engines/kimi.js'
 import QianwenAiPageEngine from './engines/qianwen.js'
 import WenxinAiPageEngine from './engines/wenxin.js'
 import YuanbaoAiPageEngine from './engines/yuanbao.js'
@@ -35,6 +36,7 @@ const ENGINE_FACTORIES: Array<() => AiPage> = [
   () => new YuanbaoAiPageEngine(),
   () => new JimengAiPageEngine(),
   () => new WenxinAiPageEngine(),
+  () => new KimiAiPageEngine(),
 ]
 
 function priorityOf(engine: AiPage, capability: AiCapability): number | null {
