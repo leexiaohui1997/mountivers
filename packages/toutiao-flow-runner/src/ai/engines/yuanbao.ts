@@ -9,6 +9,24 @@ const COPY_MAX_ATTEMPTS = 4
  * 元宝引擎：直接基于 Playwright Page 实现 AiPage。
  */
 export default class YuanbaoAiPageEngine extends AiPage {
+  readonly name = 'yuanbao'
+  readonly textPriority = 30
+  readonly workPriority = 20
+  readonly imagePriority = 10
+  readonly watermarkPriority = null
+  readonly supportedAttachmentExts = [
+    '.pdf',
+    '.epub',
+    '.mobi',
+    '.md',
+    '.txt',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+  ]
+  readonly sessionHosts = ['yuanbao.tencent.com']
+
   /** 元宝出图带水印 */
   readonly hasWatermark = true
 

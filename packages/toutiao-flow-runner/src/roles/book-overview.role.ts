@@ -4,7 +4,7 @@ import { BookStatus } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
 import { CreditLimitError } from '../ai/error.js'
-import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
+import { createJudgeAi, pickEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateOverview } from '../ai/logics/generate-overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
@@ -36,14 +36,18 @@ export default class BookOverview extends BaseRole {
       await browserQueue.run(
         `book-overview:${book.id}`,
         async () => {
-          const engine = await getEngine({ ext, sessionUrl: book.sessionUrl ?? undefined })
+          const engine = await pickEngine({
+            capability: 'work',
+            attachments: [book.path],
+            sessionUrl: book.sessionUrl ?? undefined,
+          })
           if (!engine) {
             console.log(`[book-overview] 不支持的文件类型，跳过: ${book.path}`)
             return
           }
 
           const ai = new AiPageAdapter(engine)
-          const judgeAi = createYuanbaoJudgeAi()
+          const judgeAi = await createJudgeAi()
           try {
             const { data, sessionUrl } = await generateOverview(ai, {
               bookPath: book.path,

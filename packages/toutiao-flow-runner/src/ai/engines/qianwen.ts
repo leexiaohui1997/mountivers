@@ -1,5 +1,5 @@
 import { activatePage } from '../../utils/browser.js'
-import { recordQianwenCreditLimit } from '../../utils/qianwen-credit.js'
+import { getQianwenCreditState, recordQianwenCreditLimit } from '../../utils/qianwen-credit.js'
 import { CreditLimitError } from '../error.js'
 import { AiPage } from '../types.js'
 
@@ -21,6 +21,24 @@ export class QianwenCreditLimitError extends CreditLimitError {
  * 页面由 AiPage 自行获取和释放。
  */
 export default class QianwenAiPageEngine extends AiPage {
+  readonly name = 'qianwen'
+  readonly textPriority = 20
+  readonly workPriority = 30
+  readonly imagePriority = null
+  readonly watermarkPriority = null
+  readonly supportedAttachmentExts = [
+    '.pdf',
+    '.epub',
+    '.mobi',
+    '.md',
+    '.txt',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+  ]
+  readonly sessionHosts = ['qianwen.com']
+
   /** 千问当前不参与生图 */
   readonly hasWatermark = false
 
@@ -211,6 +229,10 @@ export default class QianwenAiPageEngine extends AiPage {
   async release(): Promise<void> {
     await super.release()
     this.loggedIn = false
+  }
+
+  async disabled(): Promise<boolean> {
+    return (await getQianwenCreditState()) !== null
   }
 
   async checkCreditLimit(): Promise<void> {

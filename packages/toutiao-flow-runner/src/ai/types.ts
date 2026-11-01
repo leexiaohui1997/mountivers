@@ -41,8 +41,34 @@ export abstract class Ai {
 }
 
 export abstract class AiPage {
+  /** 引擎标识，用于日志与引擎切换 */
+  abstract readonly name: string
+
   /** 该引擎生成的图片是否带水印；生图管线据此决定是否执行去水印 */
   abstract readonly hasWatermark: boolean
+
+  /** 普通文生文优先级（判定/图检/修词等辅助任务）；数值越大越优先，null 表示不支持 */
+  abstract readonly textPriority: number | null
+
+  /** 业务内容生成优先级（概览/成稿/微头条等，通常带附件）；null 表示不支持 */
+  abstract readonly workPriority: number | null
+
+  /** 文生图优先级；null 表示不支持 */
+  abstract readonly imagePriority: number | null
+
+  /** 去水印（图生图）优先级；null 表示不支持 */
+  abstract readonly watermarkPriority: number | null
+
+  /** 支持的附件后缀白名单（小写、含点）；未列出的后缀不会选中该引擎 */
+  readonly supportedAttachmentExts: readonly string[] = []
+
+  /** 历史会话域名；用于按会话地址复用原引擎 */
+  readonly sessionHosts: readonly string[] = []
+
+  /** 额度/会员限制时返回 true；有历史会话时选取会忽略该状态 */
+  async disabled(): Promise<boolean> {
+    return false
+  }
 
   /** 随机页面 id，用于 getPage 缓存与释放 */
   readonly pageId: string

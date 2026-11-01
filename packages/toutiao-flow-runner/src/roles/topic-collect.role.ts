@@ -2,7 +2,7 @@ import { BookStatus, Prisma } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
 import { CreditLimitError } from '../ai/error.js'
-import { getEngine } from '../ai/helper.js'
+import { pickEngine } from '../ai/helper.js'
 import { generateTopicKeywords } from '../ai/logics/generate-topic-keywords.js'
 import ToutiaoPage, { parseDiscussionCount, type TopicItem } from '../browser-pages/toutiao.js'
 import { browserQueue } from '../utils/browser-queue.js'
@@ -41,8 +41,9 @@ export default class TopicCollectRole extends BaseRole {
         `topic-collect:${book.id}`,
         async () => {
           const toutiaoPage = await getPage('topic-collect-toutiao')
-          const engine = await getEngine({
-            ext: book.path,
+          const engine = await pickEngine({
+            capability: 'text',
+            attachments: [book.path],
             sessionUrl: book.sessionUrl ?? undefined,
           })
           if (!engine) {

@@ -4,7 +4,7 @@ import { Article, ArticleStatus, Book, BookStatus } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
 import { CreditLimitError } from '../ai/error.js'
-import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
+import { createJudgeAi, pickEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateArticle } from '../ai/logics/generate-article.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
@@ -68,14 +68,17 @@ export default class ArticleRole extends BaseRole {
         `article:${book.id}:${article.index}`,
         async () => {
           // 只按书籍格式选引擎：成稿不复用概览会话，避免同书多篇上下文互相干扰
-          const engine = await getEngine({ ext: book.path })
+          const engine = await pickEngine({
+            capability: 'work',
+            attachments: [book.path],
+          })
           if (!engine) {
             await this.markFailed(article.id, `不支持的书籍格式: ${book.path}`)
             return
           }
 
           const ai = new AiPageAdapter(engine)
-          const judgeAi = createYuanbaoJudgeAi()
+          const judgeAi = await createJudgeAi()
           try {
             await this.generateArticle(ai, judgeAi, article, book, overview, state)
           } finally {

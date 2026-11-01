@@ -4,7 +4,7 @@ import { BookStatus, Prisma } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
 import { CreditLimitError } from '../ai/error.js'
-import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
+import { createJudgeAi, pickEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateMicroHeadline } from '../ai/logics/generate-micro-headline.js'
 import { isMicroHeadlineData } from '../types/micro-headline.js'
@@ -49,8 +49,9 @@ export default class MicroHeadlineRole extends BaseRole {
         await browserQueue.run(
           `micro-headline:${book.id}:${count + 1}`,
           async () => {
-            const engine = await getEngine({
-              ext: book.path,
+            const engine = await pickEngine({
+              capability: 'work',
+              attachments: [book.path],
               sessionUrl: book.sessionUrl ?? undefined,
             })
             if (!engine) {
@@ -58,7 +59,7 @@ export default class MicroHeadlineRole extends BaseRole {
             }
 
             const ai = new AiPageAdapter(engine)
-            const judgeAi = createYuanbaoJudgeAi()
+            const judgeAi = await createJudgeAi()
             try {
               const excludeTopics = await this.getExistingTopics(book.id)
               // 每条微头条单独开新会话，避免同书多条互相干扰、上下文持续膨胀

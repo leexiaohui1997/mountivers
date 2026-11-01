@@ -1,6 +1,7 @@
 import { extname } from 'node:path'
 
 import { activatePage } from '../../utils/browser.js'
+import { getJimengCreditState } from '../../utils/jimeng-credit.js'
 import { AiPage } from '../types.js'
 
 import type { Locator } from 'playwright'
@@ -27,8 +28,21 @@ export class JimengCreditError extends Error {
  * 当前只支持文生图；文本生成相关方法为空实现。
  */
 export default class JimengAiPageEngine extends AiPage {
+  readonly name = 'jimeng'
+  readonly textPriority = null
+  readonly workPriority = null
+  readonly imagePriority = 30
+  readonly watermarkPriority = null
+  readonly supportedAttachmentExts = ['.png', '.jpg', '.jpeg', '.webp']
+  readonly sessionHosts = ['jimeng.jianying.com']
+
   /** 即梦出图不带水印 */
   readonly hasWatermark = false
+
+  async disabled(): Promise<boolean> {
+    const state = await getJimengCreditState()
+    return Boolean(state && state.remainingCredit <= 0)
+  }
 
   /** 本次提交前读取到的积分 */
   lastCreditBefore: number | null = null

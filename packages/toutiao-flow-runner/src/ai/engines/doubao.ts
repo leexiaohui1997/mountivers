@@ -11,6 +11,24 @@ const COPY_MAX_ATTEMPTS = 4
  * 各方法目前只保留签名和 TODO，等实现时替换内部逻辑。
  */
 export default class DoubaoAiPageEngine extends AiPage {
+  readonly name = 'doubao'
+  readonly textPriority = 10
+  readonly workPriority = 10
+  readonly imagePriority = 20
+  readonly watermarkPriority = null
+  readonly supportedAttachmentExts = [
+    '.pdf',
+    '.epub',
+    '.mobi',
+    '.md',
+    '.txt',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+  ]
+  readonly sessionHosts = ['doubao.com']
+
   /** TODO: 根据豆包实际出图情况调整 */
   readonly hasWatermark = false
 

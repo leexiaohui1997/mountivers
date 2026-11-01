@@ -1,8 +1,7 @@
 import { AiPageAdapter } from '../ai/adapter.js'
 import JimengAiPageEngine, { JimengCreditError } from '../ai/engines/jimeng.js'
-import WenxinAiPageEngine from '../ai/engines/wenxin.js'
-import YuanbaoAiPageEngine from '../ai/engines/yuanbao.js'
-import { getImageEngine } from '../ai/helper.js'
+import { CreditLimitError } from '../ai/error.js'
+import { pickEngine } from '../ai/helper.js'
 import { checkImage } from '../ai/logics/check-image.js'
 import { fixImagePrompt } from '../ai/logics/fix-image-prompt.js'
 import { generateImage } from '../ai/logics/generate-image.js'
@@ -54,45 +53,48 @@ export function emphasizeRatio(prompt: string): string {
     .replace(/(?<!\*)(16\s*[:：]\s*9)(?!\*)/g, '**$1**')
 }
 
-type ImageEngineName = 'jimeng' | 'yuanbao'
-
 /** 单次出图后，因水印维度不通过而执行“去水印 → 图检”的最大轮数 */
 const MAX_WATERMARK_CLEAN_ROUNDS = 3
 
-/** 持有当前图片引擎，并处理即梦 → 元宝的切换 */
+/** 持有当前图片引擎，并在失败或额度受限时按优先级切换到下一个 */
 class ImageAiManager {
   private engine: AiPage
   private ai: Ai
-  private name: ImageEngineName
+  private readonly excluded = new Set<string>()
 
   constructor(engine: AiPage) {
     this.engine = engine
     this.ai = new AiPageAdapter(engine)
-    this.name = engine instanceof JimengAiPageEngine ? 'jimeng' : 'yuanbao'
   }
 
   get current(): Ai {
     return this.ai
   }
 
-  get engineName(): ImageEngineName {
-    return this.name
+  get engineName(): string {
+    return this.engine.name
   }
 
   get hasWatermark(): boolean {
     return this.engine.hasWatermark
   }
 
-  async switchToYuanbao(): Promise<void> {
-    if (this.name === 'yuanbao') return
+  /** 切换到下一个可用生图引擎；没有可用引擎时返回 false */
+  async switchToNextEngine(): Promise<boolean> {
+    const next = await pickEngine({
+      capability: 'image',
+      exclude: [...this.excluded, this.engine.name],
+    })
+    if (!next) return false
 
+    this.excluded.add(this.engine.name)
     await this.ai.release()
-    this.engine = new YuanbaoAiPageEngine()
-    this.ai = new AiPageAdapter(this.engine)
-    this.name = 'yuanbao'
+    this.engine = next
+    this.ai = new AiPageAdapter(next)
+    return true
   }
 
-  /** 即梦成功后刷新积分；若已用完，立即切到元宝供后续任务使用 */
+  /** 即梦成功后刷新积分；若已用完，标记并切到下一个引擎供后续任务使用 */
   async refreshJimengCredit(): Promise<void> {
     if (!(this.engine instanceof JimengAiPageEngine)) return
 
@@ -107,8 +109,14 @@ class ImageAiManager {
 
     if (credit <= 0) {
       await markJimengCreditExhausted(0)
-      console.log('[image] 即梦积分已用完，后续改用元宝')
-      await this.switchToYuanbao()
+      console.log('[image] 即梦积分已用完，后续改用其他引擎')
+      try {
+        await this.switchToNextEngine()
+      } catch (error) {
+        console.log(
+          `[image] 切换生图引擎失败: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
     }
   }
 
@@ -124,23 +132,39 @@ class ImageAiManager {
 export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult[]> {
   if (!tasks.length) return []
 
+  const imageEngine = await pickEngine({ capability: 'image' })
+  if (!imageEngine) throw new Error('没有可用的生图引擎')
+
+  const checkEngine = await pickEngine({ capability: 'text' })
+  if (!checkEngine) throw new Error('没有可用的图片质检引擎')
+
   const results: ImageTaskResult[] = []
-  const manager = new ImageAiManager(await getImageEngine())
-  const checkAi = new AiPageAdapter(new YuanbaoAiPageEngine())
+  const manager = new ImageAiManager(imageEngine)
+  const checkAi = new AiPageAdapter(checkEngine)
 
-  let wenxinAi: Ai | null = null
+  let watermarkAi: Ai | null = null
   let fixAi: Ai | null = null
+  let fixAiSession: string | null = null
 
-  const ensureWenxinAi = (): Ai => {
-    if (!wenxinAi) {
-      wenxinAi = new AiPageAdapter(new WenxinAiPageEngine())
+  const ensureWatermarkAi = async (): Promise<Ai> => {
+    if (!watermarkAi) {
+      const engine = await pickEngine({ capability: 'watermark' })
+      if (!engine) throw new Error('没有可用的去水印引擎')
+      watermarkAi = new AiPageAdapter(engine)
     }
-    return wenxinAi
+    return watermarkAi
   }
 
-  const ensureFixAi = (): Ai => {
-    if (!fixAi) {
-      fixAi = new AiPageAdapter(new YuanbaoAiPageEngine())
+  const ensureFixAi = async (sessionUrl?: string): Promise<Ai> => {
+    const target = sessionUrl ?? null
+    if (!fixAi || fixAiSession !== target) {
+      if (fixAi) await fixAi.release()
+
+      const engine = await pickEngine({ capability: 'text', sessionUrl })
+      if (!engine) throw new Error('没有可用的修词引擎')
+
+      fixAi = new AiPageAdapter(engine)
+      fixAiSession = target
     }
     return fixAi
   }
@@ -162,7 +186,7 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
 
     for (let round = 1; round <= MAX_WATERMARK_CLEAN_ROUNDS && check.hasWatermark; round++) {
       console.log(`[image] ${label} 第 ${attempt} 次校验水印未通过，执行第 ${round} 轮去水印后重检`)
-      file = await removeWatermark(ensureWenxinAi(), { image: file })
+      file = await removeWatermark(await ensureWatermarkAi(), { image: file })
       check = await checkImage(checkAi, { image: file, prompt })
     }
 
@@ -189,41 +213,51 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
         tryTimes++
 
         let generated: File | null = null
-        let engineUsed: ImageEngineName = manager.engineName
+        let engineUsed: string = manager.engineName
         let needsWatermark = manager.hasWatermark
 
-        try {
-          generated = await generate(prompt, reference)
-          engineUsed = manager.engineName
-          needsWatermark = manager.hasWatermark
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error)
+        while (!generated) {
+          try {
+            generated = await generate(prompt, reference)
+            engineUsed = manager.engineName
+            needsWatermark = manager.hasWatermark
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error)
+            const creditError =
+              error instanceof CreditLimitError ||
+              error instanceof JimengCreditError ||
+              isJimengCreditError(detail)
 
-          if (manager.engineName === 'jimeng') {
-            const creditError = error instanceof JimengCreditError || isJimengCreditError(detail)
-            console.log(
-              `[image] ${task.label} ${creditError ? '即梦积分不足' : '即梦生成失败'}，切换到元宝: ${detail}`,
-            )
-            if (creditError) {
+            // 只有额度限制才切换引擎；其他生成错误走修词重试
+            if (!creditError) {
+              const fixed = await tryFixPrompt(
+                await ensureFixAi(task.sessionUrl?.() ?? undefined),
+                task,
+                prompt,
+                error,
+                tryTimes,
+              )
+              if (fixed) prompt = fixed
+              break
+            }
+
+            if (manager.engineName === 'jimeng') {
               await markJimengCreditExhausted()
             }
-            await manager.switchToYuanbao()
 
-            try {
-              generated = await generate(prompt, reference)
-              engineUsed = 'yuanbao'
-              needsWatermark = manager.hasWatermark
-            } catch (fallbackError) {
-              const fixed = await tryFixPrompt(ensureFixAi(), task, prompt, fallbackError, tryTimes)
-              if (fixed) prompt = fixed
-              continue
+            console.log(
+              `[image] ${task.label} ${manager.engineName} 额度受限，尝试切换引擎: ${detail}`,
+            )
+
+            const switched = await manager.switchToNextEngine()
+            if (!switched) {
+              throw new Error(`没有可用的生图引擎，终止当前任务: ${detail}`)
             }
-          } else {
-            const fixed = await tryFixPrompt(ensureFixAi(), task, prompt, error, tryTimes)
-            if (fixed) prompt = fixed
-            continue
           }
         }
+
+        // 修词后本轮没有出图，进入下一次质检尝试
+        if (!generated) continue
 
         if (engineUsed === 'jimeng') {
           await manager.refreshJimengCredit()
@@ -231,7 +265,7 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
 
         if (needsWatermark) {
           try {
-            generated = await removeWatermark(ensureWenxinAi(), { image: generated })
+            generated = await removeWatermark(await ensureWatermarkAi(), { image: generated })
           } catch (error) {
             console.log(
               `[image] ${task.label} 第 ${tryTimes} 次去水印失败: ${error instanceof Error ? error.message : String(error)}`,
@@ -304,12 +338,12 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
   } finally {
     await manager.release()
     await checkAi.release()
-    if (wenxinAi) await wenxinAi.release()
+    if (watermarkAi) await watermarkAi.release()
     if (fixAi) await fixAi.release()
   }
 }
 
-/** 元宝出图失败时改写提示词；失败只记录，不阻塞后续尝试 */
+/** 出图失败时改写提示词；失败只记录，不阻塞后续尝试 */
 async function tryFixPrompt(
   ai: Ai,
   task: ImageTask,
@@ -318,7 +352,7 @@ async function tryFixPrompt(
   tryTimes: number,
 ): Promise<string | null> {
   const detail = error instanceof Error ? error.message : String(error)
-  console.log(`[image] ${task.label} 第 ${tryTimes} 次元宝出图失败，按提示词违规处理: ${detail}`)
+  console.log(`[image] ${task.label} 第 ${tryTimes} 次出图失败，按提示词违规处理: ${detail}`)
 
   try {
     const fixed = await fixImagePrompt(ai, {

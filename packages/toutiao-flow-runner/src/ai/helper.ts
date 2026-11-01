@@ -1,7 +1,6 @@
 import { extname } from 'node:path'
 
 import { ENABLE_JSON_CONTENT_JUDGE } from '../utils/env.js'
-import { getJimengCreditState } from '../utils/jimeng-credit.js'
 
 import { AiPageAdapter } from './adapter.js'
 import DoubaoAiPageEngine from './engines/doubao.js'
@@ -9,99 +8,110 @@ import JimengAiPageEngine from './engines/jimeng.js'
 import QianwenAiPageEngine from './engines/qianwen.js'
 import WenxinAiPageEngine from './engines/wenxin.js'
 import YuanbaoAiPageEngine from './engines/yuanbao.js'
+import { CreditLimitError } from './error.js'
 
 import type { Ai, AiPage } from './types.js'
 
-export type GetEngineParams = {
-  /** 书籍文件后缀，支持 `pdf`、`.pdf`、`book.pdf` 等写法，大小写不敏感 */
-  ext?: string
-  /** 已存在的 AI 会话地址；优先按会话所属平台复用原引擎 */
+/** 引擎能力类型 */
+export type AiCapability = 'text' | 'work' | 'image' | 'watermark'
+
+export interface PickEngineOptions {
+  capability: AiCapability
+  /** 本次需要上传的附件文件名；按引擎白名单过滤 */
+  attachments?: string[]
+  /**
+   * 已有会话地址；命中时固定复用对应引擎，不参与优先级比较。
+   * 该引擎若处于额度限制，直接抛 CreditLimitError 让任务退出，不切换到其他引擎。
+   */
   sessionUrl?: string
+  /** 需要排除的引擎名（切换引擎时避免选回自己） */
+  exclude?: string[]
 }
 
-/** 统一后缀格式：去空白、转小写、去掉开头的点；也支持直接传完整文件名 */
-export function normalizeExt(ext: string | null | undefined): string {
-  const value = (ext ?? '').trim().toLowerCase()
-  if (!value) return ''
-
-  const fromPath = extname(value)
-  return (fromPath || value).replace(/^\./, '')
-}
-
-/** 书籍后缀 → 文本引擎；新增引擎时在这里注册即可 */
-const ENGINE_FACTORIES: Record<string, () => AiPage> = {
-  pdf: () => new QianwenAiPageEngine(),
-  epub: () => new QianwenAiPageEngine(),
-  mobi: () => new QianwenAiPageEngine(),
-}
-
-/** 会话域名 → 引擎工厂；用于沿用书籍历史会话 */
-const SESSION_ENGINE_FACTORIES: Array<{
-  host: string
-  create: () => AiPage
-}> = [
-  { host: 'yuanbao.tencent.com', create: () => new YuanbaoAiPageEngine() },
-  { host: 'jimeng.jianying.com', create: () => new JimengAiPageEngine() },
-  { host: 'wenxin.baidu.com', create: () => new WenxinAiPageEngine() },
-  { host: 'doubao.com', create: () => new DoubaoAiPageEngine() },
-  { host: 'qianwen.com', create: () => new QianwenAiPageEngine() },
+/** 引擎注册表：新增引擎时在这里注册 */
+const ENGINE_FACTORIES: Array<() => AiPage> = [
+  () => new QianwenAiPageEngine(),
+  () => new DoubaoAiPageEngine(),
+  () => new YuanbaoAiPageEngine(),
+  () => new JimengAiPageEngine(),
+  () => new WenxinAiPageEngine(),
 ]
 
-/** 根据 sessionUrl 的域名判断原本使用的是哪个引擎 */
-export function getEngineBySessionUrl(sessionUrl: string): AiPage | null {
+function priorityOf(engine: AiPage, capability: AiCapability): number | null {
+  if (capability === 'text') return engine.textPriority
+  if (capability === 'work') return engine.workPriority
+  if (capability === 'image') return engine.imagePriority
+  return engine.watermarkPriority
+}
+
+function supportsAttachments(engine: AiPage, names: string[] = []): boolean {
+  return names.every((name) => {
+    const ext = extname(name).toLowerCase()
+    return !ext || engine.supportedAttachmentExts.includes(ext)
+  })
+}
+
+function matchSessionHost(engine: AiPage, sessionUrl: string): boolean {
   let host: string
   try {
     host = new URL(sessionUrl.trim()).hostname.toLowerCase()
   } catch {
-    return null
+    return false
   }
 
-  const matched = SESSION_ENGINE_FACTORIES.find(
-    (entry) => host === entry.host || host.endsWith(`.${entry.host}`),
-  )
-  return matched ? matched.create() : null
+  return engine.sessionHosts.some((item) => host === item || host.endsWith(`.${item}`))
 }
 
 /**
- * 根据书籍文件后缀选择引擎。
- * 未传 ext 时使用默认元宝；后缀不支持时返回 null，由调用方决定报错或回退。
+ * 按能力选取引擎：
+ * - 有历史会话且对应引擎支持该能力：固定复用；该引擎额度受限时抛
+ *   CreditLimitError 直接退出任务，不降级到其他引擎；
+ * - 否则按优先级从高到低，跳过不支持附件、处于额度限制的引擎；
+ * - 全部候选都被额度限制时抛 CreditLimitError，交由角色层暂停任务。
  */
-export async function getEngine(params?: GetEngineParams): Promise<AiPage | null> {
-  // 有历史会话时优先沿用原平台，避免策略调整后串到别的引擎
-  if (params?.sessionUrl) {
-    const sessionEngine = getEngineBySessionUrl(params.sessionUrl)
-    if (sessionEngine) return sessionEngine
+export async function pickEngine(opts: PickEngineOptions): Promise<AiPage | null> {
+  const exclude = new Set(opts.exclude ?? [])
+  const candidates = ENGINE_FACTORIES.map((create) => create())
+    .filter((engine) => !exclude.has(engine.name))
+    .filter(
+      (engine) =>
+        priorityOf(engine, opts.capability) !== null &&
+        supportsAttachments(engine, opts.attachments),
+    )
+
+  if (opts.sessionUrl) {
+    const resumed = candidates.find((engine) => matchSessionHost(engine, opts.sessionUrl!))
+    if (resumed) {
+      if (await resumed.disabled()) {
+        throw new CreditLimitError(`会话所属引擎处于额度限制: ${resumed.name}`)
+      }
+      return resumed
+    }
   }
 
-  const ext = normalizeExt(params?.ext)
-  if (!ext) {
-    return new YuanbaoAiPageEngine()
+  candidates.sort((a, b) => priorityOf(b, opts.capability)! - priorityOf(a, opts.capability)!)
+
+  for (const engine of candidates) {
+    if (!(await engine.disabled())) return engine
   }
 
-  return getEngineByExt(ext)
+  if (candidates.length > 0) {
+    throw new CreditLimitError('所有可用 AI 引擎均处于额度限制')
+  }
+  return null
 }
 
-export async function getEngineByExt(ext: string): Promise<AiPage | null> {
-  const factory = ENGINE_FACTORIES[normalizeExt(ext)]
-  return factory ? factory() : null
-}
-
-/** 固定的 JSON 文案判定 AI：独立元宝页面，不复用生成会话 */
-export function createYuanbaoJudgeAi(): Ai | undefined {
+/**
+ * 创建 JSON 文案判定的辅助 AI。
+ * 判定失败不应阻塞生成，因此选不到引擎或全部受限时返回 undefined。
+ */
+export async function createJudgeAi(): Promise<Ai | undefined> {
   if (!ENABLE_JSON_CONTENT_JUDGE) return undefined
-  return new AiPageAdapter(new YuanbaoAiPageEngine())
-}
 
-/**
- * 图片生成引擎选择：
- * - 即梦积分状态为 0 且未过期 → 元宝；
- * - 无状态/状态过期/剩余积分 > 0 → 先尝试即梦。
- */
-export async function getImageEngine(): Promise<AiPage> {
-  const creditState = await getJimengCreditState()
-  if (creditState && creditState.remainingCredit <= 0) {
-    return new YuanbaoAiPageEngine()
+  try {
+    const engine = await pickEngine({ capability: 'text' })
+    return engine ? new AiPageAdapter(engine) : undefined
+  } catch {
+    return undefined
   }
-
-  return new JimengAiPageEngine()
 }
