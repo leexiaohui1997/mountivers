@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { BookStatus, Prisma } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
+import { CreditLimitError } from '../ai/error.js'
 import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateMicroHeadline } from '../ai/logics/generate-micro-headline.js'
@@ -93,6 +94,11 @@ export default class MicroHeadlineRole extends BaseRole {
           console.warn(
             `[micro-headline] 附件缺失，跳过本次: missing=${error.missing.join('、') || '未知'}`,
           )
+          break
+        }
+
+        if (error instanceof CreditLimitError) {
+          console.warn(`[micro-headline] 额度/会员限制，暂停本次任务: ${error.message}`)
           break
         }
 

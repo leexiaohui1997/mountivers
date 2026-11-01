@@ -60,6 +60,14 @@ export abstract class AiPage {
     return this._page
   }
 
+  /**
+   * 额度/会员限制检测：命中时抛 CreditLimitError，供调用方与真实请求竞速。
+   * 默认不检测，返回永不结束的 Promise；子类覆写时也应只在命中时抛错。
+   */
+  checkCreditLimit(): Promise<void> {
+    return new Promise<void>(() => {})
+  }
+
   /** 公共方法内部使用；未初始化时直接报错，避免静默操作空页面 */
   protected get page(): Page {
     if (!this._page) {

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { BookStatus } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
+import { CreditLimitError } from '../ai/error.js'
 import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateOverview } from '../ai/logics/generate-overview.js'
@@ -87,6 +88,14 @@ export default class BookOverview extends BaseRole {
         )
         return
       }
+
+      if (error instanceof CreditLimitError) {
+        console.warn(
+          `[book-overview] 额度/会员限制，暂停本次任务: book.id=${book.id}, ${error.message}`,
+        )
+        return
+      }
+
       throw error
     }
   }

@@ -1,6 +1,7 @@
 import { BookStatus, Prisma } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
+import { CreditLimitError } from '../ai/error.js'
 import { getEngine } from '../ai/helper.js'
 import { generateTopicKeywords } from '../ai/logics/generate-topic-keywords.js'
 import ToutiaoPage, { parseDiscussionCount, type TopicItem } from '../browser-pages/toutiao.js'
@@ -35,96 +36,106 @@ export default class TopicCollectRole extends BaseRole {
     console.log(`[topic-collect] 开始收集话题: book.id=${book.id}`)
 
     // 浏览器是共享单例：整段页面流程作为一个任务串行执行
-    await browserQueue.run(
-      `topic-collect:${book.id}`,
-      async () => {
-        const toutiaoPage = await getPage('topic-collect-toutiao')
-        const engine = await getEngine({
-          ext: book.path,
-          sessionUrl: book.sessionUrl ?? undefined,
-        })
-        if (!engine) {
-          console.log(`[topic-collect] 不支持的文件类型，跳过: ${book.path}`)
-          await releasePage(toutiaoPage)
-          return
-        }
-
-        const ai = new AiPageAdapter(engine)
-        try {
-          const $toutiao = new ToutiaoPage(toutiaoPage)
-          await $toutiao.ensureLogin()
-
-          const topics: TopicItem[] = []
-          const excludeKeywords = new Set<string>()
-          let round = 0
-
-          // AI 给关键词 → 头条收集 → 不足 3 个回到 AI 重新给,直到达标或轮次耗尽
-          while (topics.length < TOPIC_TARGET && round < 5) {
-            round++
-
-            const keywords = await generateTopicKeywords(ai, {
-              sessionUrl: book.sessionUrl ?? undefined,
-              exclude: [...excludeKeywords],
-            })
-            if (!keywords.length) {
-              console.log(`[topic-collect] 第 ${round} 轮未拿到关键词，放弃本轮`)
-              break
-            }
-            console.log(`[topic-collect] 第 ${round} 轮关键词: ${keywords.join('、')}`)
-
-            // 每轮重新进入发布页,保证编辑器就位
-            await $toutiao.openPublishPage()
-            const collected: TopicItem[] = []
-            for (const kw of keywords) {
-              try {
-                const items = await $toutiao.collectTopics(kw)
-                // 热度门槛:讨论数不足 1000 的话题丢弃
-                const valid = items.filter(
-                  (item) => parseDiscussionCount(item.meta) >= TOPIC_MIN_DISCUSSION,
-                )
-                console.log(
-                  `[topic-collect] #${kw} ${items.length ? `收集到「${items[0].name}」(${items[0].meta})` : '未收集到话题'}${valid.length ? '' : '，低于门槛丢弃'}`,
-                )
-                // AI 给过的关键词一律排除,下轮不再重复
-                excludeKeywords.add(kw)
-                collected.push(...valid)
-              } catch (e) {
-                console.log(
-                  `[topic-collect] #${kw} 收集失败，跳过: ${e instanceof Error ? e.message : String(e)}`,
-                )
-              }
-            }
-
-            // 按 name 去重合并
-            const seen = new Set(topics.map((t) => t.name))
-            for (const item of collected) {
-              if (!seen.has(item.name)) {
-                seen.add(item.name)
-                topics.push(item)
-              }
-            }
-            console.log(`[topic-collect] 第 ${round} 轮累计话题数: ${topics.length}`)
+    try {
+      await browserQueue.run(
+        `topic-collect:${book.id}`,
+        async () => {
+          const toutiaoPage = await getPage('topic-collect-toutiao')
+          const engine = await getEngine({
+            ext: book.path,
+            sessionUrl: book.sessionUrl ?? undefined,
+          })
+          if (!engine) {
+            console.log(`[topic-collect] 不支持的文件类型，跳过: ${book.path}`)
+            await releasePage(toutiaoPage)
+            return
           }
 
-          if (topics.length >= TOPIC_TARGET) {
-            // 按讨论数从高到低排序后落库
-            topics.sort((a, b) => parseDiscussionCount(b.meta) - parseDiscussionCount(a.meta))
-            await prisma.book.update({
-              where: { id: book.id },
-              data: { tags: topics },
-            })
-            console.log(`[topic-collect] 话题已落库: book.id=${book.id}, 共 ${topics.length} 个`)
-          } else {
-            console.log(
-              `[topic-collect] 话题数不足 ${TOPIC_TARGET}(当前 ${topics.length}),下轮重试: book.id=${book.id}`,
-            )
+          const ai = new AiPageAdapter(engine)
+          try {
+            const $toutiao = new ToutiaoPage(toutiaoPage)
+            await $toutiao.ensureLogin()
+
+            const topics: TopicItem[] = []
+            const excludeKeywords = new Set<string>()
+            let round = 0
+
+            // AI 给关键词 → 头条收集 → 不足 3 个回到 AI 重新给,直到达标或轮次耗尽
+            while (topics.length < TOPIC_TARGET && round < 5) {
+              round++
+
+              const keywords = await generateTopicKeywords(ai, {
+                sessionUrl: book.sessionUrl ?? undefined,
+                exclude: [...excludeKeywords],
+              })
+              if (!keywords.length) {
+                console.log(`[topic-collect] 第 ${round} 轮未拿到关键词，放弃本轮`)
+                break
+              }
+              console.log(`[topic-collect] 第 ${round} 轮关键词: ${keywords.join('、')}`)
+
+              // 每轮重新进入发布页,保证编辑器就位
+              await $toutiao.openPublishPage()
+              const collected: TopicItem[] = []
+              for (const kw of keywords) {
+                try {
+                  const items = await $toutiao.collectTopics(kw)
+                  // 热度门槛:讨论数不足 1000 的话题丢弃
+                  const valid = items.filter(
+                    (item) => parseDiscussionCount(item.meta) >= TOPIC_MIN_DISCUSSION,
+                  )
+                  console.log(
+                    `[topic-collect] #${kw} ${items.length ? `收集到「${items[0].name}」(${items[0].meta})` : '未收集到话题'}${valid.length ? '' : '，低于门槛丢弃'}`,
+                  )
+                  // AI 给过的关键词一律排除,下轮不再重复
+                  excludeKeywords.add(kw)
+                  collected.push(...valid)
+                } catch (e) {
+                  console.log(
+                    `[topic-collect] #${kw} 收集失败，跳过: ${e instanceof Error ? e.message : String(e)}`,
+                  )
+                }
+              }
+
+              // 按 name 去重合并
+              const seen = new Set(topics.map((t) => t.name))
+              for (const item of collected) {
+                if (!seen.has(item.name)) {
+                  seen.add(item.name)
+                  topics.push(item)
+                }
+              }
+              console.log(`[topic-collect] 第 ${round} 轮累计话题数: ${topics.length}`)
+            }
+
+            if (topics.length >= TOPIC_TARGET) {
+              // 按讨论数从高到低排序后落库
+              topics.sort((a, b) => parseDiscussionCount(b.meta) - parseDiscussionCount(a.meta))
+              await prisma.book.update({
+                where: { id: book.id },
+                data: { tags: topics },
+              })
+              console.log(`[topic-collect] 话题已落库: book.id=${book.id}, 共 ${topics.length} 个`)
+            } else {
+              console.log(
+                `[topic-collect] 话题数不足 ${TOPIC_TARGET}(当前 ${topics.length}),下轮重试: book.id=${book.id}`,
+              )
+            }
+          } finally {
+            await ai.release()
+            await releasePage(toutiaoPage)
           }
-        } finally {
-          await ai.release()
-          await releasePage(toutiaoPage)
-        }
-      },
-      this.priority,
-    )
+        },
+        this.priority,
+      )
+    } catch (error) {
+      if (error instanceof CreditLimitError) {
+        console.warn(
+          `[topic-collect] 额度/会员限制，暂停本次任务: book.id=${book.id}, ${error.message}`,
+        )
+        return
+      }
+      throw error
+    }
   }
 }

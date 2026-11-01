@@ -1,8 +1,20 @@
 import { activatePage } from '../../utils/browser.js'
+import { recordQianwenCreditLimit } from '../../utils/qianwen-credit.js'
+import { CreditLimitError } from '../error.js'
 import { AiPage } from '../types.js'
 
 const QIANWEN_URL = 'https://www.qianwen.com/'
 const COPY_MAX_ATTEMPTS = 4
+
+/** 千问额度恢复间隔：检测到限制后按 5 小时估算恢复时间 */
+export const QIANWEN_CREDIT_RECOVERY_MS = 5 * 60 * 60 * 1000
+
+export class QianwenCreditLimitError extends CreditLimitError {
+  constructor(message = '千问额度已用尽，需要订阅专业会员') {
+    super(message)
+    this.name = 'QianwenCreditLimitError'
+  }
+}
 
 /**
  * 千问引擎：当前只实现文本能力；图片相关方法留空。
@@ -199,6 +211,26 @@ export default class QianwenAiPageEngine extends AiPage {
   async release(): Promise<void> {
     await super.release()
     this.loggedIn = false
+  }
+
+  async checkCreditLimit(): Promise<void> {
+    await this.ensurePage()
+    const target = this.page
+      .locator('[class^="message-select-wrapper-answer"] [data-button-text="订阅千问专业会员"]')
+      .first()
+    await target.waitFor({ state: 'attached', timeout: 0 })
+
+    try {
+      const until = await recordQianwenCreditLimit(QIANWEN_CREDIT_RECOVERY_MS)
+      console.warn(`[qianwen] 检测到额度限制，预计恢复时间: ${until.toISOString()}`)
+    } catch (error) {
+      // 状态写入失败不应掩盖额度限制本身
+      console.error(
+        `[qianwen] 记录额度状态失败: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+
+    throw new QianwenCreditLimitError()
   }
 
   /** 新会话切换到「思考研究」模式 */

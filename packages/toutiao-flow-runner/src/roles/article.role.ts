@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { Article, ArticleStatus, Book, BookStatus } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
+import { CreditLimitError } from '../ai/error.js'
 import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
 import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateArticle } from '../ai/logics/generate-article.js'
@@ -88,6 +89,13 @@ export default class ArticleRole extends BaseRole {
       if (error instanceof AttachmentMissingError) {
         console.warn(
           `[article] 附件缺失，跳过本次: book.id=${book.id}, 第${article.index}篇, missing=${error.missing.join('、') || '未知'}`,
+        )
+        return
+      }
+
+      if (error instanceof CreditLimitError) {
+        console.warn(
+          `[article] 额度/会员限制，暂停本次任务: book.id=${book.id}, 第${article.index}篇, ${error.message}`,
         )
         return
       }

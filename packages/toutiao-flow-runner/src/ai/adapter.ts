@@ -23,6 +23,18 @@ export class AiPageAdapter extends Ai {
     await this.engine.release()
   }
 
+  /**
+   * 与引擎的额度/会员限制检测竞速：
+   * 正常请求先完成则返回结果；检测命中（抛错）则立即中断。
+   */
+  private async raceCreditLimit<T>(request: Promise<T>): Promise<T> {
+    const limitCheck = this.engine.checkCreditLimit().then<never>(() => {
+      throw new Error('checkCreditLimit 未按约定抛错')
+    })
+
+    return await Promise.race([request, limitCheck])
+  }
+
   text2text: TextToTextFunc = async (opts) => {
     await this.engine.ensureLogin()
     await this.engine.openSession(opts.sessionUrl)
@@ -33,7 +45,7 @@ export class AiPageAdapter extends Ai {
     await this.engine.input(opts.prompt)
     await this.engine.send()
 
-    let result = await this.engine.getAnswer()
+    let result = await this.raceCreditLimit(this.engine.getAnswer())
 
     while (true) {
       let next: InputArgs | undefined
@@ -55,7 +67,7 @@ export class AiPageAdapter extends Ai {
       }
       await this.engine.input(next.prompt)
       await this.engine.send()
-      result = await this.engine.getAnswer()
+      result = await this.raceCreditLimit(this.engine.getAnswer())
     }
   }
 
@@ -69,7 +81,7 @@ export class AiPageAdapter extends Ai {
     }
     await this.engine.input(opts.prompt)
     await this.engine.send()
-    return await this.engine.getImageAnswer()
+    return await this.raceCreditLimit(this.engine.getImageAnswer())
   }
 
   image2image: ImageToImageFunc = async (opts) => {
@@ -79,6 +91,6 @@ export class AiPageAdapter extends Ai {
     await this.engine.uploadImage(opts.image)
     await this.engine.input(opts.prompt)
     await this.engine.send()
-    return await this.engine.getImageAnswer()
+    return await this.raceCreditLimit(this.engine.getImageAnswer())
   }
 }

@@ -2,6 +2,7 @@ import path from 'node:path'
 
 import { BookStatus } from '@toutiao-flow/db'
 
+import { CreditLimitError } from '../ai/error.js'
 import { isOverviewJson } from '../types/overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { prisma } from '../utils/db.js'
@@ -20,13 +21,21 @@ export default class GenerateImageRole extends BaseRole {
     if (!tasks.length) return
 
     // 浏览器是共享单例：整段页面流程作为一个任务串行执行
-    await browserQueue.run(
-      `generate-image:${tasks.length}`,
-      async () => {
-        await runImageTasks(tasks)
-      },
-      this.priority,
-    )
+    try {
+      await browserQueue.run(
+        `generate-image:${tasks.length}`,
+        async () => {
+          await runImageTasks(tasks)
+        },
+        this.priority,
+      )
+    } catch (error) {
+      if (error instanceof CreditLimitError) {
+        console.warn(`[generate-image] 额度/会员限制，暂停本次任务: ${error.message}`)
+        return
+      }
+      throw error
+    }
   }
 
   async getBookSchedule(): Promise<ImageTask[]> {

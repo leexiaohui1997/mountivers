@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 
 import { Article, ArticleStatus, Book, BookStatus } from '@toutiao-flow/db'
 
+import { CreditLimitError } from '../ai/error.js'
 import { isArticleJson, type ArticleJson } from '../types/article.js'
 import {
   buildArticleImageSpecs,
@@ -90,6 +91,13 @@ export default class ArticleImageRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof CreditLimitError) {
+        console.warn(
+          `[article-image] 额度/会员限制，暂停本次任务: book.id=${book.id}, 第${article.index}篇, ${error.message}`,
+        )
+        return
+      }
+
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[article-image] 生成异常: book.id=${book.id}, 第${article.index}篇: ${reason}`)
       await this.recordFailure(article.id, article.imageAttempts, `生成异常：${reason}`)
