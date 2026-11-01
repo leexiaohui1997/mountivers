@@ -8,7 +8,11 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "prebuild": "pnpm -F @toutiao-flow/db db:g"
+    "prebuild": "pnpm -F @toutiao-flow/db db:g",
+    "mac:start": "bash scripts/macos/start.sh",
+    "mac:stop": "bash scripts/macos/stop.sh",
+    "mac:restart": "bash scripts/macos/restart.sh",
+    "mac:status": "bash scripts/macos/status.sh"
   },
   "dependencies": {
     "@prisma/adapter-libsql": "^7.10.0",
