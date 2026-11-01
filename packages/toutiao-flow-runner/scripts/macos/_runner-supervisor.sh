@@ -4,13 +4,14 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUN_DIR="$RUNNER_DIR/.run"
-LOG_FILE="$RUN_DIR/runner.log"
+LOG_DIR="$RUN_DIR/logs"
+LOG_FILE="${RUNNER_LOG_FILE:-$LOG_DIR/runner-$(date +%Y-%m-%d).log}"
 PID_FILE="$RUN_DIR/runner.pid"
 CHILD_PID_FILE="$RUN_DIR/runner-child.pid"
 STOP_FILE="$RUN_DIR/stop"
 ENTRY="$RUNNER_DIR/dist/index.js"
 
-mkdir -p "$RUN_DIR"
+mkdir -p "$RUN_DIR" "$LOG_DIR"
 echo "$$" > "$PID_FILE"
 rm -f "$CHILD_PID_FILE" "$STOP_FILE"
 

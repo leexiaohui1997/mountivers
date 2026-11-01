@@ -4,8 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUN_DIR="$RUNNER_DIR/.run"
+LOG_DIR="$RUN_DIR/logs"
 PID_FILE="$RUN_DIR/runner.pid"
-LOG_FILE="$RUN_DIR/runner.log"
+LOG_FILE="$LOG_DIR/runner-$(date +%Y-%m-%d).log"
 ENTRY="$RUNNER_DIR/dist/index.js"
 RUNNER_ENV="$RUNNER_DIR/.env"
 
@@ -20,7 +21,7 @@ if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   exit 0
 fi
 
-mkdir -p "$RUN_DIR"
+mkdir -p "$RUN_DIR" "$LOG_DIR"
 rm -f "$RUN_DIR/stop"
 
 if command -v pnpm >/dev/null 2>&1; then
@@ -48,6 +49,7 @@ if [ -f "$LOG_FILE" ]; then
   fi
 fi
 
+export RUNNER_LOG_FILE="$LOG_FILE"
 nohup bash "$SCRIPT_DIR/_runner-supervisor.sh" >> "$LOG_FILE" 2>&1 &
 SUPERVISOR_PID=$!
 
