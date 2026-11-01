@@ -15,7 +15,17 @@ export default class DeepSeekAiPageEngine extends AiPage {
   readonly imagePriority: number | null = null
   readonly watermarkPriority: number | null = null
 
-  readonly supportedAttachmentExts = ['.pdf', '.epub', '.mobi', '.mob']
+  readonly supportedAttachmentExts = [
+    '.pdf',
+    '.epub',
+    '.mobi',
+    '.md',
+    '.txt',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.webp',
+  ]
   readonly sessionHosts = ['deepseek.com']
 
   readonly hasWatermark = false
