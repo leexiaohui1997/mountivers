@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -9,6 +8,7 @@ import { isOverviewJson } from '../types/overview.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
 import { getStartOfLocalDay } from '../utils/time.js'
+import { enqueueWtxBuildDeploy } from '../utils/wtx-deploy.js'
 import { getWtxReportGeneratedAt, setWtxReportGeneratedAt } from '../utils/wtx-report.js'
 
 interface ReportImage {
@@ -148,8 +148,7 @@ export default class WtxReportRole extends BaseRole {
 
     console.log(`[wtx-report] 报表已生成: ${dataPath}, ${items.length} 条`)
 
-    await runCommand(pnpmCommand, ['run', 'build'], wtxPath)
-    await runCommand(pnpmCommand, ['run', 'deploy'], wtxPath)
+    await enqueueWtxBuildDeploy('wtx-report', wtxPath, pnpmCommand)
 
     await setWtxReportGeneratedAt(new Date())
     console.log('[wtx-report] 报表已构建并部署')
@@ -164,26 +163,4 @@ async function removeOldImages(imagesDir: string, keepIds: Set<string>): Promise
     await rm(path.join(imagesDir, entry.name), { recursive: true, force: true })
     console.log(`[wtx-report] 清理旧图片: ${entry.name}`)
   }
-}
-
-function runCommand(command: string, args: string[], cwd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    console.log(`[wtx-report] 执行: ${command} ${args.join(' ')} (cwd=${cwd})`)
-
-    const child = spawn(command, args, {
-      cwd,
-      stdio: 'inherit',
-      env: process.env,
-      shell: process.platform === 'win32',
-    })
-
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve()
-      } else {
-        reject(new Error(`${command} ${args.join(' ')} 退出码 ${code ?? 'unknown'}`))
-      }
-    })
-  })
 }

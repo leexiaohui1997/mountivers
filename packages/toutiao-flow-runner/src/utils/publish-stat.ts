@@ -8,6 +8,13 @@ export function getPublishDateKey(now = new Date()): string {
   return `${year}-${month}-${day}`
 }
 
+/** 本地时区的昨日日期键：YYYY-MM-DD */
+export function getYesterdayDateKey(now = new Date()): string {
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  return getPublishDateKey(yesterday)
+}
+
 /** 读取指定日期（默认今天）的发布成功次数 */
 export async function getPublishSuccessCount(now = new Date()): Promise<number> {
   const row = await prisma.publishStat.findUnique({
