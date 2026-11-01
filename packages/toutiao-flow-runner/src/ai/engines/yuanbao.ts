@@ -9,6 +9,9 @@ const COPY_MAX_ATTEMPTS = 4
  * 元宝引擎：直接基于 Playwright Page 实现 AiPage。
  */
 export default class YuanbaoAiPageEngine extends AiPage {
+  /** 元宝出图带水印 */
+  readonly hasWatermark = true
+
   async ensureLogin(): Promise<void> {
     await this.ensurePage()
     const url = this.page.url()

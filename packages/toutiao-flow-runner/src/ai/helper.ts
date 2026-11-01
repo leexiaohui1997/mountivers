@@ -2,6 +2,7 @@ import { extname } from 'node:path'
 
 import { getJimengCreditState } from '../utils/jimeng-credit.js'
 
+import DoubaoAiPageEngine from './engines/doubao.js'
 import JimengAiPageEngine from './engines/jimeng.js'
 import QianwenAiPageEngine from './engines/qianwen.js'
 import WenxinAiPageEngine from './engines/wenxin.js'
@@ -27,9 +28,9 @@ export function normalizeExt(ext: string | null | undefined): string {
 
 /** 书籍后缀 → 文本引擎；新增引擎时在这里注册即可 */
 const ENGINE_FACTORIES: Record<string, () => AiPage> = {
-  pdf: () => new YuanbaoAiPageEngine(),
-  epub: () => new QianwenAiPageEngine(),
-  mobi: () => new QianwenAiPageEngine(),
+  pdf: () => new DoubaoAiPageEngine(),
+  epub: () => new DoubaoAiPageEngine(),
+  mobi: () => new DoubaoAiPageEngine(),
 }
 
 /** 会话域名 → 引擎工厂；用于沿用书籍历史会话 */
@@ -40,6 +41,7 @@ const SESSION_ENGINE_FACTORIES: Array<{
   { host: 'yuanbao.tencent.com', create: () => new YuanbaoAiPageEngine() },
   { host: 'jimeng.jianying.com', create: () => new JimengAiPageEngine() },
   { host: 'wenxin.baidu.com', create: () => new WenxinAiPageEngine() },
+  { host: 'doubao.com', create: () => new DoubaoAiPageEngine() },
   { host: 'qianwen.com', create: () => new QianwenAiPageEngine() },
 ]
 

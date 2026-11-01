@@ -37,6 +37,9 @@ export abstract class Ai {
 }
 
 export abstract class AiPage {
+  /** 该引擎生成的图片是否带水印；生图管线据此决定是否执行去水印 */
+  abstract readonly hasWatermark: boolean
+
   /** 随机页面 id，用于 getPage 缓存与释放 */
   readonly pageId: string
   private _page: Page | null = null

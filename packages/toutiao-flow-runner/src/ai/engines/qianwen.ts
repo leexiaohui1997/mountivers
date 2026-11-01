@@ -9,6 +9,9 @@ const COPY_MAX_ATTEMPTS = 4
  * 页面由 AiPage 自行获取和释放。
  */
 export default class QianwenAiPageEngine extends AiPage {
+  /** 千问当前不参与生图 */
+  readonly hasWatermark = false
+
   private loggedIn = false
 
   async ensureLogin(): Promise<void> {

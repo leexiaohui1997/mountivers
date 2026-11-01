@@ -27,6 +27,9 @@ export class JimengCreditError extends Error {
  * 当前只支持文生图；文本生成相关方法为空实现。
  */
 export default class JimengAiPageEngine extends AiPage {
+  /** 即梦出图不带水印 */
+  readonly hasWatermark = false
+
   /** 本次提交前读取到的积分 */
   lastCreditBefore: number | null = null
   /** 本次生成完成后、打开预览图前读取到的积分 */

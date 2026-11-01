@@ -10,6 +10,9 @@ const WENXIN_HOME = 'https://wenxin.baidu.com/'
  * 文本生成能力暂不实现，getAnswer / uploadFile 为空实现。
  */
 export default class WenxinAiPageEngine extends AiPage {
+  /** 文心用于图片处理，结果不带平台水印 */
+  readonly hasWatermark = false
+
   async ensureLogin(): Promise<void> {
     await this.ensurePage()
     const url = this.page.url()

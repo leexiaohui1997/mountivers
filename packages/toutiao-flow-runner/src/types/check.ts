@@ -6,6 +6,8 @@ export const CheckJsonSchema = z.object({
   pass: z.boolean(),
   /** 0~100 综合评分；用于失败时挑选最佳结果，即使合格也必须给出 */
   score: z.number().min(0).max(100),
+  /** 画面是否仍存在水印/二维码/平台标识 */
+  hasWatermark: z.boolean(),
   /** 逐项检查结果,与模板 6 个校验维度一一对应 */
   checks: z.array(
     z.object({

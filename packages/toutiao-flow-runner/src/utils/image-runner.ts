@@ -17,6 +17,7 @@ import {
 } from './jimeng-credit.js'
 
 import type { Ai, AiPage } from '../ai/types.js'
+import type { CheckJson } from '../types/check.js'
 import type { PrismaClient } from '@toutiao-flow/db'
 
 /** 单张图片的生成任务：出图 → 去水印 → 质检，失败时用 suggestion 重跑 */
@@ -55,6 +56,9 @@ export function emphasizeRatio(prompt: string): string {
 
 type ImageEngineName = 'jimeng' | 'yuanbao'
 
+/** 单次出图后，因水印维度不通过而执行“去水印 → 图检”的最大轮数 */
+const MAX_WATERMARK_CLEAN_ROUNDS = 3
+
 /** 持有当前图片引擎，并处理即梦 → 元宝的切换 */
 class ImageAiManager {
   private engine: AiPage
@@ -73,6 +77,10 @@ class ImageAiManager {
 
   get engineName(): ImageEngineName {
     return this.name
+  }
+
+  get hasWatermark(): boolean {
+    return this.engine.hasWatermark
   }
 
   async switchToYuanbao(): Promise<void> {
@@ -142,6 +150,25 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
     return await generateImage(manager.current, { prompt: actualPrompt, reference })
   }
 
+  /** 图检若指出水印维度不通过，则去水印后重新图检，最多 3 轮 */
+  const checkAndCleanWatermark = async (
+    image: File,
+    prompt: string,
+    label: string,
+    attempt: number,
+  ): Promise<{ file: File; check: CheckJson }> => {
+    let file = image
+    let check = await checkImage(checkAi, { image: file, prompt })
+
+    for (let round = 1; round <= MAX_WATERMARK_CLEAN_ROUNDS && check.hasWatermark; round++) {
+      console.log(`[image] ${label} 第 ${attempt} 次校验水印未通过，执行第 ${round} 轮去水印后重检`)
+      file = await removeWatermark(ensureWenxinAi(), { image: file })
+      check = await checkImage(checkAi, { image: file, prompt })
+    }
+
+    return { file, check }
+  }
+
   try {
     for (const task of tasks) {
       const attachPath = task.attachPath?.()
@@ -163,10 +190,12 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
 
         let generated: File | null = null
         let engineUsed: ImageEngineName = manager.engineName
+        let needsWatermark = manager.hasWatermark
 
         try {
           generated = await generate(prompt, reference)
           engineUsed = manager.engineName
+          needsWatermark = manager.hasWatermark
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error)
 
@@ -183,6 +212,7 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
             try {
               generated = await generate(prompt, reference)
               engineUsed = 'yuanbao'
+              needsWatermark = manager.hasWatermark
             } catch (fallbackError) {
               const fixed = await tryFixPrompt(ensureFixAi(), task, prompt, fallbackError, tryTimes)
               if (fixed) prompt = fixed
@@ -199,17 +229,29 @@ export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult
           await manager.refreshJimengCredit()
         }
 
-        // 即梦与元宝出图后统一走文心去水印
+        if (needsWatermark) {
+          try {
+            generated = await removeWatermark(ensureWenxinAi(), { image: generated })
+          } catch (error) {
+            console.log(
+              `[image] ${task.label} 第 ${tryTimes} 次去水印失败: ${error instanceof Error ? error.message : String(error)}`,
+            )
+            continue
+          }
+        }
+
+        let checked: { file: File; check: CheckJson }
         try {
-          generated = await removeWatermark(ensureWenxinAi(), { image: generated })
+          checked = await checkAndCleanWatermark(generated, prompt, task.label, tryTimes)
         } catch (error) {
           console.log(
-            `[image] ${task.label} 第 ${tryTimes} 次去水印失败: ${error instanceof Error ? error.message : String(error)}`,
+            `[image] ${task.label} 第 ${tryTimes} 次水印复检失败: ${error instanceof Error ? error.message : String(error)}`,
           )
           continue
         }
 
-        const check = await checkImage(checkAi, { image: generated, prompt })
+        generated = checked.file
+        const check = checked.check
         const brief = check.checks
           .map((c) =>
             c.pass ? `${c.name}✓${c.reason ? `(${c.reason})` : ''}` : `${c.name}✗(${c.reason})`,
