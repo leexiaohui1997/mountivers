@@ -21,7 +21,6 @@ const DAILY_TARGET = 3
 interface SourceBook {
   id: string
   path: string
-  sessionUrl: string | null
   overview: OverviewJson
 }
 
@@ -53,7 +52,6 @@ export default class MicroHeadlineRole extends BaseRole {
             const engine = await pickEngine({
               capability: 'work',
               attachments: [book.path],
-              sessionUrl: book.sessionUrl ?? undefined,
             })
             if (!engine) {
               await lockBookForNoEngine(book.id)
@@ -132,7 +130,6 @@ export default class MicroHeadlineRole extends BaseRole {
       select: {
         id: true,
         path: true,
-        sessionUrl: true,
         overview: true,
       },
     })
