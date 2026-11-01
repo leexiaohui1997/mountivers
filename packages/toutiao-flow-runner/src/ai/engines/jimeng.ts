@@ -36,8 +36,8 @@ export default class JimengAiPageEngine extends AiPage {
   readonly supportedAttachmentExts = ['.png', '.jpg', '.jpeg', '.webp']
   readonly sessionHosts = ['jimeng.jianying.com']
 
-  /** 即梦出图不带水印 */
-  readonly hasWatermark = false
+  /** 即梦出图带水印 */
+  readonly hasWatermark = true
 
   async disabled(): Promise<boolean> {
     const state = await getJimengCreditState()
