@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { getPage, releasePage } from '../utils/browser.js'
+import { activatePage, getPage, releasePage } from '../utils/browser.js'
 
 import type { Page } from 'playwright'
 
@@ -30,6 +30,10 @@ export abstract class Ai {
   abstract text2Image: TextToImageFunc
   abstract image2image: ImageToImageFunc
   abstract release(): Promise<void>
+
+  async activate(): Promise<void> {
+    await this.engine.activate()
+  }
 
   getSessionUrl(): string {
     return this.engine.getPageUrl()
@@ -66,6 +70,11 @@ export abstract class AiPage {
 
   getPageUrl(): string {
     return this.page.url()
+  }
+
+  async activate(): Promise<void> {
+    await this.ensurePage()
+    await activatePage(this.page)
   }
 
   async release(): Promise<void> {

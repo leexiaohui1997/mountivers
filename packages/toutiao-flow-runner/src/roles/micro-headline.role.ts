@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { BookStatus, Prisma } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
-import { getEngine } from '../ai/helper.js'
+import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
 import { generateMicroHeadline } from '../ai/logics/generate-micro-headline.js'
 import { isMicroHeadlineData } from '../types/micro-headline.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
@@ -56,6 +56,7 @@ export default class MicroHeadlineRole extends BaseRole {
             }
 
             const ai = new AiPageAdapter(engine)
+            const judgeAi = createYuanbaoJudgeAi()
             try {
               const excludeTopics = await this.getExistingTopics(book.id)
               // 每条微头条单独开新会话，避免同书多条互相干扰、上下文持续膨胀
@@ -63,6 +64,7 @@ export default class MicroHeadlineRole extends BaseRole {
                 bookPath: book.path,
                 overview: book.overview,
                 excludeTopics,
+                judgeAi,
               })
 
               await prisma.microHeadline.create({
@@ -78,6 +80,7 @@ export default class MicroHeadlineRole extends BaseRole {
               )
             } finally {
               await ai.release()
+              await judgeAi?.release()
             }
           },
           this.priority,

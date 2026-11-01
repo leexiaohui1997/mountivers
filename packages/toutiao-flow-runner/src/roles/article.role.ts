@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { Article, ArticleStatus, Book, BookStatus } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
-import { getEngine } from '../ai/helper.js'
+import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
 import { generateArticle } from '../ai/logics/generate-article.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
@@ -73,10 +73,12 @@ export default class ArticleRole extends BaseRole {
           }
 
           const ai = new AiPageAdapter(engine)
+          const judgeAi = createYuanbaoJudgeAi()
           try {
-            await this.generateArticle(ai, article, book, overview, state)
+            await this.generateArticle(ai, judgeAi, article, book, overview, state)
           } finally {
             await ai.release()
+            await judgeAi?.release()
           }
         },
         this.priority,
@@ -90,6 +92,7 @@ export default class ArticleRole extends BaseRole {
 
   private async generateArticle(
     ai: Ai,
+    judgeAi: Ai | undefined,
     article: ArticleWithBook,
     book: Book,
     overview: OverviewJson,
@@ -99,6 +102,7 @@ export default class ArticleRole extends BaseRole {
       bookPath: book.path,
       overview,
       index: article.index,
+      judgeAi,
       onViolation: async (info) => {
         state.attempts = await this.recordFailure(
           article.id,

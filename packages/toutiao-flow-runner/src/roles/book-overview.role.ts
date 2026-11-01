@@ -3,7 +3,7 @@ import path from 'node:path'
 import { BookStatus } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
-import { getEngine } from '../ai/helper.js'
+import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
 import { generateOverview } from '../ai/logics/generate-overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
 import { prisma } from '../utils/db.js'
@@ -40,10 +40,12 @@ export default class BookOverview extends BaseRole {
         }
 
         const ai = new AiPageAdapter(engine)
+        const judgeAi = createYuanbaoJudgeAi()
         try {
           const { data, sessionUrl } = await generateOverview(ai, {
             bookPath: book.path,
             sessionUrl: book.sessionUrl ?? undefined,
+            judgeAi,
           })
 
           await prisma.$transaction(async (tx) => {
@@ -71,6 +73,7 @@ export default class BookOverview extends BaseRole {
           )
         } finally {
           await ai.release()
+          await judgeAi?.release()
         }
       },
       this.priority,

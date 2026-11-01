@@ -5,6 +5,8 @@ import { extractJsonBlock } from '../../utils/markdown.js'
 import { renderToAttach, renderTemplate } from '../../utils/template.js'
 import { WORD_THRESHOLD } from '../../utils/word-count.js'
 
+import { buildJudgeRepair, reviewJsonContent } from './judge-json-content.js'
+
 import type { OverviewJson } from '../../types/overview.js'
 import type { Ai } from '../types.js'
 
@@ -21,6 +23,7 @@ export interface GenerateArticleOptions {
   overview: OverviewJson
   index: number
   sessionUrl?: string
+  judgeAi?: Ai
   /** 每次校验失败时回调，通常用于落库 attempts / lastError */
   onViolation?: (info: ArticleViolationInfo) => Promise<void>
 }
@@ -93,6 +96,13 @@ export async function generateArticle(
       const { violations, wordCount, imageCount } = validateArticle(articleJson)
 
       if (violations.length === 0) {
+        const review = await reviewJsonContent(opts.judgeAi, ai, 'article', articleJson)
+        if (!review.pass) {
+          await ai.activate()
+          await append({ prompt: buildJudgeRepair(review.check?.issues ?? []) })
+          return
+        }
+
         data = articleJson
         return
       }

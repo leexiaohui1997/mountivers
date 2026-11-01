@@ -3,11 +3,14 @@ import { attachToFile } from '../../utils/attach.js'
 import { extractJsonBlock } from '../../utils/markdown.js'
 import { renderToAttach } from '../../utils/template.js'
 
+import { buildJudgeRepair, reviewJsonContent } from './judge-json-content.js'
+
 import type { Ai } from '../types.js'
 
 export interface GenerateOverviewOptions {
   bookPath: string
   sessionUrl?: string
+  judgeAi?: Ai
 }
 
 export interface GenerateOverviewResult {
@@ -41,6 +44,13 @@ export async function generateOverview(
         await append({
           prompt: `概览校验未通过，请调整后重新输出完整 overview JSON：${failReason}`,
         })
+        return
+      }
+
+      const review = await reviewJsonContent(opts.judgeAi, ai, 'overview', json)
+      if (!review.pass) {
+        await ai.activate()
+        await append({ prompt: buildJudgeRepair(review.check?.issues ?? []) })
         return
       }
 

@@ -7,6 +7,8 @@ import { attachToFile } from '../../utils/attach.js'
 import { extractJsonBlock } from '../../utils/markdown.js'
 import { renderToAttach } from '../../utils/template.js'
 
+import { buildJudgeRepair, reviewJsonContent } from './judge-json-content.js'
+
 import type { OverviewJson } from '../../types/overview.js'
 import type { Ai } from '../types.js'
 
@@ -15,6 +17,7 @@ export interface GenerateMicroHeadlineOptions {
   overview: OverviewJson
   excludeTopics?: string[]
   sessionUrl?: string
+  judgeAi?: Ai
 }
 
 export interface GenerateMicroHeadlineResult {
@@ -70,6 +73,13 @@ export async function generateMicroHeadline(
             .map((item) => `- ${item}`)
             .join('\n')}`,
         })
+        return
+      }
+
+      const review = await reviewJsonContent(opts.judgeAi, ai, 'micro-headline', normalized)
+      if (!review.pass) {
+        await ai.activate()
+        await append({ prompt: buildJudgeRepair(review.check?.issues ?? []) })
         return
       }
 

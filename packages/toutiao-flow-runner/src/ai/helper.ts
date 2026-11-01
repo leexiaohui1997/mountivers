@@ -1,14 +1,16 @@
 import { extname } from 'node:path'
 
+import { ENABLE_JSON_CONTENT_JUDGE } from '../utils/env.js'
 import { getJimengCreditState } from '../utils/jimeng-credit.js'
 
+import { AiPageAdapter } from './adapter.js'
 import DoubaoAiPageEngine from './engines/doubao.js'
 import JimengAiPageEngine from './engines/jimeng.js'
 import QianwenAiPageEngine from './engines/qianwen.js'
 import WenxinAiPageEngine from './engines/wenxin.js'
 import YuanbaoAiPageEngine from './engines/yuanbao.js'
 
-import type { AiPage } from './types.js'
+import type { Ai, AiPage } from './types.js'
 
 export type GetEngineParams = {
   /** 书籍文件后缀，支持 `pdf`、`.pdf`、`book.pdf` 等写法，大小写不敏感 */
@@ -82,6 +84,12 @@ export async function getEngine(params?: GetEngineParams): Promise<AiPage | null
 export async function getEngineByExt(ext: string): Promise<AiPage | null> {
   const factory = ENGINE_FACTORIES[normalizeExt(ext)]
   return factory ? factory() : null
+}
+
+/** 固定的 JSON 文案判定 AI：独立元宝页面，不复用生成会话 */
+export function createYuanbaoJudgeAi(): Ai | undefined {
+  if (!ENABLE_JSON_CONTENT_JUDGE) return undefined
+  return new AiPageAdapter(new YuanbaoAiPageEngine())
 }
 
 /**

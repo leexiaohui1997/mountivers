@@ -23,3 +23,8 @@ export const DATABASE_URL = envVar('DATABASE_URL', true)!
 export const TEMPLATE_DIR = resolve(here, '../../templates')
 
 export const IMAGE_DOWNLOAD_DIR = envVar('IMAGE_DOWNLOAD_DIR', true)!
+
+/** 是否启用 JSON 文案判定；未配置时默认开启 */
+export const ENABLE_JSON_CONTENT_JUDGE = !['false', '0', 'no', 'off'].includes(
+  (envVar('ENABLE_JSON_CONTENT_JUDGE') ?? 'true').toLowerCase(),
+)
