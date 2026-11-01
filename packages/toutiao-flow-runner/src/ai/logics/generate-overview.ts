@@ -3,6 +3,7 @@ import { attachToFile } from '../../utils/attach.js'
 import { extractJsonBlock } from '../../utils/markdown.js'
 import { renderToAttach } from '../../utils/template.js'
 
+import { ATTACHMENT_MISSING_INSTRUCTION, throwIfAttachmentMissing } from './attachment-missing.js'
 import { buildJudgeRepair, reviewJsonContent } from './judge-json-content.js'
 
 import type { Ai } from '../types.js'
@@ -29,10 +30,12 @@ export async function generateOverview(
   let data: OverviewJson | undefined
 
   await ai.text2text({
-    prompt: '按提示词为这本书编写概览 overview，以 json 代码块的格式回复',
+    prompt: `按提示词为这本书编写概览 overview，以 json 代码块的格式回复。${ATTACHMENT_MISSING_INSTRUCTION}`,
     attaches: [bookFile, promptFile],
     sessionUrl: opts.sessionUrl,
     onResult: async (answer, append) => {
+      throwIfAttachmentMissing(answer)
+
       const json = extractJsonBlock(answer)
       if (!json) {
         await append({ prompt: '请以 json 代码块的格式回复' })

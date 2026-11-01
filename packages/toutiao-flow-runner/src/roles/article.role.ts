@@ -4,6 +4,7 @@ import { Article, ArticleStatus, Book, BookStatus } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
 import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
+import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateArticle } from '../ai/logics/generate-article.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
@@ -84,6 +85,13 @@ export default class ArticleRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof AttachmentMissingError) {
+        console.warn(
+          `[article] 附件缺失，跳过本次: book.id=${book.id}, 第${article.index}篇, missing=${error.missing.join('、') || '未知'}`,
+        )
+        return
+      }
+
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[article] 生成异常: book.id=${book.id}, 第${article.index}篇: ${reason}`)
       await this.recordFailure(article.id, state.attempts, `生成异常：${reason}`)

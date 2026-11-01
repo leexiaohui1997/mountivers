@@ -4,6 +4,7 @@ import { BookStatus, Prisma } from '@toutiao-flow/db'
 
 import { AiPageAdapter } from '../ai/adapter.js'
 import { createYuanbaoJudgeAi, getEngine } from '../ai/helper.js'
+import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateMicroHeadline } from '../ai/logics/generate-micro-headline.js'
 import { isMicroHeadlineData } from '../types/micro-headline.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
@@ -88,6 +89,13 @@ export default class MicroHeadlineRole extends BaseRole {
 
         count = await this.countToday(startOfToday)
       } catch (error) {
+        if (error instanceof AttachmentMissingError) {
+          console.warn(
+            `[micro-headline] 附件缺失，跳过本次: missing=${error.missing.join('、') || '未知'}`,
+          )
+          break
+        }
+
         console.error(
           `[micro-headline] 创作失败: ${error instanceof Error ? error.message : String(error)}`,
         )

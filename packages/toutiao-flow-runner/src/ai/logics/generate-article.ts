@@ -5,6 +5,7 @@ import { extractJsonBlock } from '../../utils/markdown.js'
 import { renderToAttach, renderTemplate } from '../../utils/template.js'
 import { WORD_THRESHOLD } from '../../utils/word-count.js'
 
+import { ATTACHMENT_MISSING_INSTRUCTION, throwIfAttachmentMissing } from './attachment-missing.js'
 import { buildJudgeRepair, reviewJsonContent } from './judge-json-content.js'
 
 import type { OverviewJson } from '../../types/overview.js'
@@ -49,7 +50,7 @@ export async function generateArticle(
   let data: ArticleJson | undefined
 
   await ai.text2text({
-    prompt: `按提示词为第${opts.index}篇撰写成稿 article，以 json 代码块的格式回复`,
+    prompt: `按提示词为第${opts.index}篇撰写成稿 article，以 json 代码块的格式回复。${ATTACHMENT_MISSING_INSTRUCTION}`,
     attaches: [bookFile, overviewFile, promptFile],
     sessionUrl: opts.sessionUrl,
     onResult: async (answer, append) => {
@@ -66,6 +67,8 @@ export async function generateArticle(
         })
         await append({ prompt: repair })
       }
+
+      throwIfAttachmentMissing(answer)
 
       const json = extractJsonBlock(answer)
       if (!json) {
