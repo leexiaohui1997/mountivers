@@ -5,6 +5,7 @@ import path from 'node:path'
 import { BookStatus } from '@toutiao-flow/db'
 
 import { scanBookFiles } from '../utils/book-scan.js'
+import { cleanDirectory, isSameOrInside } from '../utils/clean-directory.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
 
@@ -37,9 +38,36 @@ export default class BookImportRole extends BaseRole {
 
       const sourceDir = process.env.BOOK_SOURCE_DIR
       const uploadDir = process.env.BOOK_UPLOAD_DIR
+      const imageDir = process.env.IMAGE_DOWNLOAD_DIR
       if (!sourceDir || !uploadDir) {
         console.error('[book-import] 缺少 BOOK_SOURCE_DIR 或 BOOK_UPLOAD_DIR')
         return
+      }
+
+      const cleanupDirs = [uploadDir, imageDir].filter((dir): dir is string => Boolean(dir))
+      const overlapsSource = cleanupDirs.some(
+        (dir) => isSameOrInside(dir, sourceDir) || isSameOrInside(sourceDir, dir),
+      )
+      const cleanupDirsOverlap =
+        cleanupDirs.length > 1 &&
+        (isSameOrInside(cleanupDirs[0], cleanupDirs[1]) ||
+          isSameOrInside(cleanupDirs[1], cleanupDirs[0]))
+
+      if (overlapsSource || cleanupDirsOverlap) {
+        console.error('[book-import] 清理目录与源目录或彼此重叠，跳过清理以避免误删')
+      } else {
+        for (const dir of cleanupDirs) {
+          try {
+            await cleanDirectory(dir)
+            console.log(`[book-import] 已清理目录: ${dir}`)
+          } catch (error) {
+            console.error(
+              `[book-import] 清理目录失败，继续导入: ${dir}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            )
+          }
+        }
       }
 
       const files = await scanBookFiles(sourceDir)
