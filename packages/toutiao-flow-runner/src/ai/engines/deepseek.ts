@@ -141,7 +141,11 @@ export default class DeepSeekAiPageEngine extends AiPage {
 
     for (let attempt = 1; attempt <= COPY_MAX_ATTEMPTS; attempt++) {
       const msg = this.page.locator('[data-virtual-list-item-key]').last()
-      const copyTrigger = msg.locator('> .ds-message + .ds-flex > [role="button"]').first()
+      const copyTrigger = msg
+        .locator('.ds-message + .ds-flex')
+        .first()
+        .locator('[role="button"]')
+        .first()
       await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
       await msg.hover()
       await copyTrigger.scrollIntoViewIfNeeded()
