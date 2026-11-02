@@ -146,19 +146,16 @@ export default class WenxinAiPageEngine extends AiPage {
       .locator('.chat-qa-container div.conversation-flow-answer-container')
       .last()
 
-    return await Promise.race([
-      (async () => {
-        const image = conver.locator('div.cosd-image-scroll img.cos-image-body').first()
-        await waitForLong(image, { state: 'attached', label: 'wenxin.image' })
-        const src = await image.getAttribute('src')
-        if (!src) throw new Error('文心要求重新生成图片')
-        return src
-      })(),
-      (async () => {
-        const target = conver.locator('.cs-answer-hover-menu-container .cos-icon-copy').first()
-        await waitForLong(target, { state: 'attached', label: 'wenxin.image-retry' })
-        throw new Error('文心要求重新生成图片')
-      })(),
-    ])
+    const copyBtn = conver.locator('.cs-answer-hover-menu-container .cos-icon-copy').first()
+    await waitForLong(copyBtn, { state: 'attached', label: 'wenxin.copy-btn' })
+    const image = conver.locator('div.cosd-image-scroll img.cos-image-body').first()
+    const hasImage = await image
+      .waitFor({ state: 'attached', timeout: 1000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!hasImage) throw new Error('文心要求重新生成图片')
+    const src = await image.getAttribute('src')
+    if (!src) throw new Error('文心要求重新生成图片')
+    return src
   }
 }
