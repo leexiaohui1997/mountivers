@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
 /**
  * 通用串行任务队列。
  *
@@ -53,6 +55,14 @@ interface QueueItem {
   reject: (reason?: unknown) => void
 }
 
+interface TaskContext {
+  queue: TaskQueue
+  item: QueueItem
+  holdCount: number
+  suspended: SuspendQueueItem | null
+  suspendPromise: Promise<void> | null
+}
+
 interface SuspendQueueItem {
   item: QueueItem
   resolve: () => void
@@ -62,6 +72,8 @@ interface SuspendQueueItem {
   yielded: boolean
   /** 恢复任务前执行；用于重新激活页面等恢复动作 */
   beforeResume?: () => Promise<void>
+  /** 所属任务的异步上下文 */
+  context: TaskContext
 }
 
 type QueueEntry = { kind: 'task'; item: QueueItem } | { kind: 'lock'; suspended: SuspendQueueItem }
@@ -72,6 +84,7 @@ export class TaskQueue {
   private readonly suspendedItems = new Set<SuspendQueueItem>()
   /** 无等待时长的暂停任务：等下一个任务真正启动后，再进入 entries 队首 */
   private readonly pendingImmediateLocks: SuspendQueueItem[] = []
+  private readonly taskContext = new AsyncLocalStorage<TaskContext>()
   private readonly hooks: TaskQueueHooks
   private readonly collectWindowMs: number
   private enabledFlag: boolean
@@ -156,6 +169,16 @@ export class TaskQueue {
       throw new Error('suspend() 只能在队列任务执行中调用')
     }
 
+    const context = this.taskContext.getStore()
+    if (!context || context.queue !== this || context.item !== this.currentItem) {
+      throw new Error('suspend() 只能在队列任务执行中调用')
+    }
+
+    // 验证等独占操作期间不允许真正让出队列
+    if (context.holdCount > 0) {
+      return Promise.resolve()
+    }
+
     const item = this.currentItem
 
     const suspended: SuspendQueueItem = {
@@ -164,6 +187,7 @@ export class TaskQueue {
       reject: () => undefined,
       yielded: false,
       beforeResume,
+      context,
     }
     this.suspendedItems.add(suspended)
 
@@ -171,6 +195,8 @@ export class TaskQueue {
       suspended.resolve = resolve
       suspended.reject = reject
     })
+    context.suspended = suspended
+    context.suspendPromise = waitPromise
 
     this.currentItem = null
     this.running = false
@@ -194,6 +220,44 @@ export class TaskQueue {
     return waitPromise
   }
 
+  /**
+   * 在当前任务内申请独占 hold。
+   * hold 期间 suspend() 不会真正让出队列；如果任务已经 suspended，
+   * 会取消当前 suspend 并把任务重新恢复为 running。
+   */
+  async hold(): Promise<() => void> {
+    const context = this.taskContext.getStore()
+    if (!context || context.queue !== this) {
+      throw new Error('hold() 只能在队列任务执行中调用')
+    }
+
+    context.holdCount++
+
+    if (context.suspended) {
+      const suspended = context.suspended
+      const waitPromise = context.suspendPromise
+
+      // 已经在恢复流程中时不要重复插入 lock
+      if (!(this.running && this.currentItem === suspended.item)) {
+        this.promoteSuspended(suspended)
+      }
+
+      try {
+        await waitPromise
+      } catch (error) {
+        context.holdCount--
+        throw error
+      }
+    }
+
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      context.holdCount--
+    }
+  }
+
   /** 等待队列清空（所有任务结束、无排队任务）。 */
   onIdle(): Promise<void> {
     if (!this.enabledFlag) return Promise.resolve()
@@ -209,6 +273,35 @@ export class TaskQueue {
     return new Promise<void>((resolve) => {
       this.idleWaiters.push(resolve)
     })
+  }
+
+  /** 取消挂起计时/排队，把暂停任务优先恢复 */
+  private promoteSuspended(suspended: SuspendQueueItem): void {
+    if (suspended.timer) {
+      clearTimeout(suspended.timer)
+      suspended.timer = undefined
+    }
+
+    for (let i = this.pendingImmediateLocks.length - 1; i >= 0; i--) {
+      if (this.pendingImmediateLocks[i] === suspended) {
+        this.pendingImmediateLocks.splice(i, 1)
+      }
+    }
+
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const entry = this.entries[i]
+      if (entry.kind === 'lock' && entry.suspended === suspended) {
+        this.entries.splice(i, 1)
+      }
+    }
+
+    if (this.collectTimer) {
+      clearTimeout(this.collectTimer)
+      this.collectTimer = null
+    }
+
+    this.entries.unshift({ kind: 'lock', suspended })
+    this.pump()
   }
 
   /** 按优先级插入普通任务；同优先级保持提交顺序（FIFO）。 */
@@ -294,6 +387,9 @@ export class TaskQueue {
       this.currentItem = suspended.item
 
       const resume = () => {
+        suspended.context.suspended = null
+        suspended.context.suspendPromise = null
+
         if (suspended.yielded) {
           console.log(`[task-queue] 恢复 "${suspended.item.label}"`)
         }
@@ -304,6 +400,8 @@ export class TaskQueue {
 
       if (suspended.beforeResume) {
         void suspended.beforeResume().then(resume, (error: unknown) => {
+          suspended.context.suspended = null
+          suspended.context.suspendPromise = null
           suspended.reject(error)
         })
         return
@@ -344,11 +442,18 @@ export class TaskQueue {
     let value: unknown
     let failure: unknown
     let fulfilled = false
+    const context: TaskContext = {
+      queue: this,
+      item,
+      holdCount: 0,
+      suspended: null,
+      suspendPromise: null,
+    }
 
     try {
       // 用 await 包裹任务调用：同步抛错会被 catch 收敛，
       // 返回非 thenable 时 await 也会原样取值，不会因 .then 不存在而抛错。
-      value = await item.task()
+      value = await this.taskContext.run(context, () => item.task())
       fulfilled = true
     } catch (error) {
       failure = error
