@@ -11,8 +11,8 @@ const COPY_MAX_ATTEMPTS = 4
 export const KIMI_CREDIT_RECOVERY_MS = 5 * 60 * 60 * 1000
 
 export class KimiCreditLimitError extends CreditLimitError {
-  constructor(message = 'Kimi 额度已用尽，需要升级会员') {
-    super(message)
+  constructor(message = 'Kimi 额度已用尽，需要升级会员', retryAfterMs = KIMI_CREDIT_RECOVERY_MS) {
+    super(message, retryAfterMs)
     this.name = 'KimiCreditLimitError'
   }
 }
@@ -199,8 +199,10 @@ export default class KimiAiPageEngine extends AiPage {
     const target = this.page.locator('.modal-container .km-button:has-text("去升级")').first()
     await waitForLong(target, { state: 'visible', label: 'kimi.credit-limit' })
 
+    const creditError = new KimiCreditLimitError()
+    const recoveryMs = creditError.retryAfterMs ?? KIMI_CREDIT_RECOVERY_MS
     const now = new Date()
-    const until = new Date(now.getTime() + KIMI_CREDIT_RECOVERY_MS)
+    const until = new Date(now.getTime() + recoveryMs)
 
     try {
       await markEngineLimited('kimi', {
@@ -208,7 +210,7 @@ export default class KimiAiPageEngine extends AiPage {
         until,
         metadata: {
           blockedAt: now.toISOString(),
-          recoveryMs: KIMI_CREDIT_RECOVERY_MS,
+          recoveryMs,
         },
       })
       console.warn(`[kimi] 检测到额度限制，预计恢复时间: ${until.toISOString()}`)
@@ -219,7 +221,7 @@ export default class KimiAiPageEngine extends AiPage {
       )
     }
 
-    throw new KimiCreditLimitError()
+    throw creditError
   }
 
   private async setModel() {

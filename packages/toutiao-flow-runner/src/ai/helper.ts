@@ -1,5 +1,6 @@
 import { extname } from 'node:path'
 
+import { getEngineLimit } from '../utils/engine-limit.js'
 import { ENABLE_JSON_CONTENT_JUDGE } from '../utils/env.js'
 
 import { AiPageAdapter } from './adapter.js'
@@ -89,7 +90,11 @@ export async function pickEngine(opts: PickEngineOptions): Promise<AiPage | null
     const resumed = candidates.find((engine) => matchSessionHost(engine, opts.sessionUrl!))
     if (resumed) {
       if (await resumed.disabled()) {
-        throw new CreditLimitError(`会话所属引擎处于额度限制: ${resumed.name}`)
+        const limit = await getEngineLimit(resumed.name)
+        const retryAfterMs = limit?.until
+          ? Math.max(0, limit.until.getTime() - Date.now())
+          : undefined
+        throw new CreditLimitError(`会话所属引擎处于额度限制: ${resumed.name}`, retryAfterMs)
       }
       return resumed
     }
@@ -102,7 +107,19 @@ export async function pickEngine(opts: PickEngineOptions): Promise<AiPage | null
   }
 
   if (candidates.length > 0) {
-    throw new CreditLimitError('所有可用 AI 引擎均处于额度限制')
+    let retryAfterMs: number | undefined
+
+    for (const engine of candidates) {
+      const limit = await getEngineLimit(engine.name)
+      if (!limit?.until) continue
+
+      const waitMs = Math.max(0, limit.until.getTime() - Date.now())
+      if (retryAfterMs === undefined || waitMs < retryAfterMs) {
+        retryAfterMs = waitMs
+      }
+    }
+
+    throw new CreditLimitError('所有可用 AI 引擎均处于额度限制', retryAfterMs)
   }
   return null
 }

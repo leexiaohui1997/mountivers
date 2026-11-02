@@ -11,8 +11,11 @@ const COPY_MAX_ATTEMPTS = 4
 export const QIANWEN_CREDIT_RECOVERY_MS = 5 * 60 * 60 * 1000
 
 export class QianwenCreditLimitError extends CreditLimitError {
-  constructor(message = '千问额度已用尽，需要订阅专业会员') {
-    super(message)
+  constructor(
+    message = '千问额度已用尽，需要订阅专业会员',
+    retryAfterMs = QIANWEN_CREDIT_RECOVERY_MS,
+  ) {
+    super(message, retryAfterMs)
     this.name = 'QianwenCreditLimitError'
   }
 }
@@ -243,15 +246,18 @@ export default class QianwenAiPageEngine extends AiPage {
       .first()
     await waitForLong(target, { state: 'attached', label: 'qianwen.credit-limit' })
 
+    const creditError = new QianwenCreditLimitError()
+    const recoveryMs = creditError.retryAfterMs ?? QIANWEN_CREDIT_RECOVERY_MS
+
     try {
       const now = new Date()
-      const until = new Date(now.getTime() + QIANWEN_CREDIT_RECOVERY_MS)
+      const until = new Date(now.getTime() + recoveryMs)
       await markEngineLimited('qianwen', {
         reason: 'professional-membership',
         until,
         metadata: {
           blockedAt: now.toISOString(),
-          recoveryMs: QIANWEN_CREDIT_RECOVERY_MS,
+          recoveryMs,
         },
       })
       console.warn(`[qianwen] 检测到额度限制，预计恢复时间: ${until.toISOString()}`)
@@ -262,7 +268,7 @@ export default class QianwenAiPageEngine extends AiPage {
       )
     }
 
-    throw new QianwenCreditLimitError()
+    throw creditError
   }
 
   /** 新会话切换到「思考研究」模式 */

@@ -8,8 +8,8 @@ import DoubaoTextAiPageEngine from './doubao-text.js'
 export const DOUBAO_CREDIT_RECOVERY_MS = 24 * 60 * 60 * 1000
 
 export class DoubaoCreditLimitError extends CreditLimitError {
-  constructor(message = '豆包创作额度已用尽') {
-    super(message)
+  constructor(message = '豆包创作额度已用尽', retryAfterMs = DOUBAO_CREDIT_RECOVERY_MS) {
+    super(message, retryAfterMs)
     this.name = 'DoubaoCreditLimitError'
   }
 }
@@ -21,7 +21,7 @@ export default class DoubaoAiPageEngine extends DoubaoTextAiPageEngine {
   readonly name = 'doubao'
   readonly textPriority = null
   readonly workPriority = null
-  readonly imagePriority = 20
+  readonly imagePriority = null
 
   async setImageMode(): Promise<void> {
     await this.ensurePage()
@@ -93,8 +93,10 @@ export default class DoubaoAiPageEngine extends DoubaoTextAiPageEngine {
       .first()
     await waitForLong(target, { state: 'attached', label: 'doubao.credit-limit' })
 
+    const creditError = new DoubaoCreditLimitError()
+    const recoveryMs = creditError.retryAfterMs ?? DOUBAO_CREDIT_RECOVERY_MS
     const now = new Date()
-    const until = new Date(now.getTime() + DOUBAO_CREDIT_RECOVERY_MS)
+    const until = new Date(now.getTime() + recoveryMs)
 
     try {
       await markEngineLimited('doubao', {
@@ -102,7 +104,7 @@ export default class DoubaoAiPageEngine extends DoubaoTextAiPageEngine {
         until,
         metadata: {
           blockedAt: now.toISOString(),
-          recoveryMs: DOUBAO_CREDIT_RECOVERY_MS,
+          recoveryMs,
         },
       })
       console.warn(`[doubao] 检测到额度限制，预计恢复时间: ${until.toISOString()}`)
@@ -113,6 +115,6 @@ export default class DoubaoAiPageEngine extends DoubaoTextAiPageEngine {
       )
     }
 
-    throw new DoubaoCreditLimitError()
+    throw creditError
   }
 }
