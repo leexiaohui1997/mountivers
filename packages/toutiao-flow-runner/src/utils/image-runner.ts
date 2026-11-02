@@ -128,7 +128,7 @@ class ImageAiManager {
   }
 }
 
-/** 所有生图批次统一串行；内部再进入 browserQueue 占用浏览器 */
+/** 生图批次独立队列；当前关闭，批次直接进入 browserQueue */
 const imageQueue = new TaskQueue(
   {
     onStart: (label, pending) => {
@@ -137,7 +137,7 @@ const imageQueue = new TaskQueue(
       }
     },
   },
-  { collectWindowMs: 0 },
+  { collectWindowMs: 0, enabled: false },
 )
 
 /**
