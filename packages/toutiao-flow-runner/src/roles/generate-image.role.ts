@@ -5,6 +5,7 @@ import { BookStatus } from '@toutiao-flow/db'
 import { CreditLimitError } from '../ai/error.js'
 import { isOverviewJson } from '../types/overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
 import { runImageTasks, type ImageTask } from '../utils/image-runner.js'
@@ -30,6 +31,11 @@ export default class GenerateImageRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[generate-image] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       if (error instanceof CreditLimitError) {
         console.warn(`[generate-image] 额度/会员限制，暂停本次任务: ${error.message}`)
         return

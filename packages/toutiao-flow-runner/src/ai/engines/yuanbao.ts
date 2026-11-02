@@ -1,3 +1,4 @@
+import { waitForLong } from '../../utils/browser-wait.js'
 import { activatePage } from '../../utils/browser.js'
 import { AiPage } from '../types.js'
 
@@ -43,8 +44,8 @@ export default class YuanbaoAiPageEngine extends AiPage {
       await loginContent.waitFor({ state: 'visible' })
       console.log('[元宝] 请扫码完成登录')
       await Promise.race([
-        loginContent.waitFor({ state: 'hidden', timeout: 0 }),
-        loginContent.waitFor({ state: 'detached', timeout: 0 }),
+        waitForLong(loginContent, { state: 'hidden', label: 'yuanbao.login-hidden' }),
+        waitForLong(loginContent, { state: 'detached', label: 'yuanbao.login-detached' }),
       ])
       await new Promise((resolve) => setTimeout(resolve, 3000))
     }
@@ -135,7 +136,7 @@ export default class YuanbaoAiPageEngine extends AiPage {
       const copyTrigger = this.page.locator(
         '.agent-chat__list__item--last [class^="ToolbarCopy_arrowIconWrap"]',
       )
-      await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
+      await waitForLong(copyTrigger, { state: 'attached', label: 'yuanbao.copy-button' })
       await copyTrigger.scrollIntoViewIfNeeded()
       await copyTrigger.click()
 
@@ -177,8 +178,8 @@ export default class YuanbaoAiPageEngine extends AiPage {
       .first()
 
     await Promise.race([
-      image.waitFor({ state: 'visible', timeout: 0 }),
-      failHint.waitFor({ state: 'visible', timeout: 0 }),
+      waitForLong(image, { state: 'visible', label: 'yuanbao.image' }),
+      waitForLong(failHint, { state: 'visible', label: 'yuanbao.image-fail' }),
     ])
 
     if (await failHint.isVisible().catch(() => false)) {

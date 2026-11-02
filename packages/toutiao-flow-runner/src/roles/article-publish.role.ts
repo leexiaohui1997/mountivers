@@ -11,6 +11,7 @@ import ToutiaoPage from '../browser-pages/toutiao.js'
 import { isArticleJson, type ArticleJson } from '../types/article.js'
 import { isOverviewJson } from '../types/overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import {
@@ -171,6 +172,11 @@ export default class ArticlePublishRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[article-publish] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       if (error instanceof PublishLimitError) {
         const until = getNextLocalMidnight()
         await setPublishLimitUntil(until)

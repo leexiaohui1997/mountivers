@@ -12,6 +12,7 @@ import {
   type ArticleImageSpec,
 } from '../utils/article-image-plan.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
 import { runImageTasks, type ImageTask, type ImageTaskResult } from '../utils/image-runner.js'
@@ -91,6 +92,11 @@ export default class ArticleImageRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[article-image] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       if (error instanceof CreditLimitError) {
         console.warn(
           `[article-image] 额度/会员限制，暂停本次任务: book.id=${book.id}, 第${article.index}篇, ${error.message}`,

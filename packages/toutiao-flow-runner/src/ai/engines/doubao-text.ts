@@ -1,3 +1,4 @@
+import { waitForLong } from '../../utils/browser-wait.js'
 import { activatePage } from '../../utils/browser.js'
 import { AiPage } from '../types.js'
 
@@ -62,7 +63,7 @@ export default class DoubaoTextAiPageEngine extends AiPage {
       await loginButton.click()
     }
     console.log('[豆包] 请完成登录')
-    await avatarImg.waitFor({ state: 'visible', timeout: 0 })
+    await waitForLong(avatarImg, { state: 'visible', label: 'doubao.login-avatar' })
   }
 
   async openSession(url?: string): Promise<void> {
@@ -133,7 +134,7 @@ export default class DoubaoTextAiPageEngine extends AiPage {
     for (let attempt = 1; attempt <= COPY_MAX_ATTEMPTS; attempt++) {
       const msg = this.page.locator('.v_list_row [data-testid="receive_message"]').last()
       const copyTrigger = msg.locator('[data-testid="message_action_copy"]').first()
-      await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
+      await waitForLong(copyTrigger, { state: 'attached', label: 'doubao.copy-button' })
       await msg.hover()
       await copyTrigger.scrollIntoViewIfNeeded()
       await copyTrigger.click()

@@ -1,3 +1,4 @@
+import { waitForLong } from '../../utils/browser-wait.js'
 import { activatePage } from '../../utils/browser.js'
 import { AiPage } from '../types.js'
 
@@ -63,7 +64,7 @@ export default class DeepSeekAiPageEngine extends AiPage {
       await loginButton.click()
     }
     console.log('[deepseek] 请完成登录')
-    await avatar.waitFor({ state: 'visible', timeout: 0 })
+    await waitForLong(avatar, { state: 'visible', label: 'deepseek.login-avatar' })
   }
 
   async openSession(url?: string): Promise<void> {
@@ -146,7 +147,7 @@ export default class DeepSeekAiPageEngine extends AiPage {
         .first()
         .locator('[role="button"]')
         .first()
-      await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
+      await waitForLong(copyTrigger, { state: 'attached', label: 'deepseek.copy-button' })
       await msg.hover()
       await copyTrigger.scrollIntoViewIfNeeded()
       await copyTrigger.click()

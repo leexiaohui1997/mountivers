@@ -9,6 +9,7 @@ import { AttachmentMissingError } from '../ai/logics/attachment-missing.js'
 import { generateOverview } from '../ai/logics/generate-overview.js'
 import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import { getPublishDateKey } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
@@ -99,6 +100,11 @@ export default class BookOverview extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[book-overview] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       if (error instanceof AttachmentMissingError) {
         console.warn(
           `[book-overview] 附件缺失，跳过本次: book.id=${book.id}, missing=${error.missing.join('、') || '未知'}`,

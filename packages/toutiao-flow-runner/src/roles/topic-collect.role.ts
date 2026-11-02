@@ -6,6 +6,7 @@ import { pickEngine } from '../ai/helper.js'
 import { generateTopicKeywords } from '../ai/logics/generate-topic-keywords.js'
 import ToutiaoPage, { parseDiscussionCount, type TopicItem } from '../browser-pages/toutiao.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
@@ -130,6 +131,11 @@ export default class TopicCollectRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[topic-collect] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       if (error instanceof CreditLimitError) {
         console.warn(
           `[topic-collect] 额度/会员限制，暂停本次任务: book.id=${book.id}, ${error.message}`,

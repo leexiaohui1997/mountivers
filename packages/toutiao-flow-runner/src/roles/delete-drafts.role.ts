@@ -1,5 +1,6 @@
 import ToutiaoPage from '../browser-pages/toutiao.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
@@ -32,6 +33,11 @@ export default class DeleteDraftsRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[delete-drafts] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[delete-drafts] 清理失败: ${reason}`)
     }

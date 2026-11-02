@@ -5,6 +5,7 @@ import { Prisma } from '@toutiao-flow/db'
 
 import { isMicroHeadlineData, type MicroHeadlineData } from '../types/micro-headline.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
 import { runImageTasks, type ImageTask } from '../utils/image-runner.js'
@@ -93,6 +94,11 @@ export default class MicroHeadlineImageRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[micro-headline-image] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       const reason = error instanceof Error ? error.message : String(error)
       await this.recordFailure(item.id, `生成异常：${reason}`)
       return

@@ -1,3 +1,4 @@
+import { waitForLong } from '../../utils/browser-wait.js'
 import { isEngineLimited, markEngineLimited } from '../../utils/engine-limit.js'
 import { CreditLimitError } from '../error.js'
 
@@ -90,7 +91,7 @@ export default class DoubaoAiPageEngine extends DoubaoTextAiPageEngine {
     const target = this.page
       .locator('.v_list_row button .truncate:text-is("购买创作额度包")')
       .first()
-    await target.waitFor({ state: 'attached', timeout: 0 })
+    await waitForLong(target, { state: 'attached', label: 'doubao.credit-limit' })
 
     const now = new Date()
     const until = new Date(now.getTime() + DOUBAO_CREDIT_RECOVERY_MS)

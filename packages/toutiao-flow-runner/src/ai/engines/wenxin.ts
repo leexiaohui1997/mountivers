@@ -1,5 +1,6 @@
 import path from 'node:path'
 
+import { waitForLong } from '../../utils/browser-wait.js'
 import { activatePage } from '../../utils/browser.js'
 import { AiPage } from '../types.js'
 
@@ -38,9 +39,10 @@ export default class WenxinAiPageEngine extends AiPage {
 
     if (!(await isLoggedIn())) {
       console.log('[wenxin] 未登录，请在浏览器中完成登录（扫码/账号）')
-      await this.page
-        .locator('img.chat-aside-avatar-content[src*="himg.bdimg.com"]')
-        .waitFor({ state: 'visible', timeout: 0 })
+      await waitForLong(this.page.locator('img.chat-aside-avatar-content[src*="himg.bdimg.com"]'), {
+        state: 'visible',
+        label: 'wenxin.login-avatar',
+      })
       console.log('[wenxin] 已完成登录')
     }
   }

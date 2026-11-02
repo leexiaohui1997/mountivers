@@ -10,6 +10,7 @@ import { generateArticle } from '../ai/logics/generate-article.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
 import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import { getPublishDateKey } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
@@ -96,6 +97,11 @@ export default class ArticleRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[article] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       if (error instanceof AttachmentMissingError) {
         console.warn(
           `[article] 附件缺失，跳过本次: book.id=${book.id}, 第${article.index}篇, missing=${error.missing.join('、') || '未知'}`,

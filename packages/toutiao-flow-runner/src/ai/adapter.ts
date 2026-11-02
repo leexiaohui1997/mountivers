@@ -35,7 +35,13 @@ export class AiPageAdapter extends Ai {
       throw new Error('checkCreditLimit 未按约定抛错')
     })
 
-    return await Promise.race([request, limitCheck])
+    try {
+      return await Promise.race([request, limitCheck])
+    } finally {
+      // 请求先完成时，额度检测可能仍在等待并在 10 分钟后超时；
+      // 这里提前接住 rejection，避免产生 unhandledRejection。
+      limitCheck.catch(() => undefined)
+    }
   }
 
   text2text: TextToTextFunc = async (opts) => {

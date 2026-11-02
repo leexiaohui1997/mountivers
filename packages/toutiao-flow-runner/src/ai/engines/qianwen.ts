@@ -1,3 +1,4 @@
+import { waitForLong } from '../../utils/browser-wait.js'
 import { activatePage } from '../../utils/browser.js'
 import { isEngineLimited, markEngineLimited } from '../../utils/engine-limit.js'
 import { CreditLimitError } from '../error.js'
@@ -52,10 +53,10 @@ export default class QianwenAiPageEngine extends AiPage {
 
     await Promise.all([
       (async () => {
-        await this.page
-          .locator('#new-nav-tab-wrapper img[src*="imgextra"]')
-          .first()
-          .waitFor({ state: 'visible', timeout: 0 })
+        await waitForLong(this.page.locator('#new-nav-tab-wrapper img[src*="imgextra"]').first(), {
+          state: 'visible',
+          label: 'qianwen.login-avatar',
+        })
         this.loggedIn = true
       })(),
       (async () => {
@@ -196,7 +197,7 @@ export default class QianwenAiPageEngine extends AiPage {
         .last()
         .locator('[data-answer-feedback-toolbar="true"] > .flex > .flex')
         .first()
-      await copyButton.waitFor({ state: 'attached', timeout: 0 })
+      await waitForLong(copyButton, { state: 'attached', label: 'qianwen.copy-button' })
       await copyButton.scrollIntoViewIfNeeded()
       await copyButton.dispatchEvent('mouseover')
 
@@ -240,7 +241,7 @@ export default class QianwenAiPageEngine extends AiPage {
     const target = this.page
       .locator('[class^="message-select-wrapper-answer"] [data-button-text="订阅千问专业会员"]')
       .first()
-    await target.waitFor({ state: 'attached', timeout: 0 })
+    await waitForLong(target, { state: 'attached', label: 'qianwen.credit-limit' })
 
     try {
       const now = new Date()

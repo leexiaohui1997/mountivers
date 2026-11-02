@@ -1,3 +1,4 @@
+import { waitForLong } from '../../utils/browser-wait.js'
 import { activatePage } from '../../utils/browser.js'
 import { isEngineLimited, markEngineLimited } from '../../utils/engine-limit.js'
 import { CreditLimitError } from '../error.js'
@@ -77,7 +78,7 @@ export default class KimiAiPageEngine extends AiPage {
       await loginButton.click()
     }
     console.log('[kimi] 请完成登录')
-    await avatar.waitFor({ state: 'visible', timeout: 0 })
+    await waitForLong(avatar, { state: 'visible', label: 'kimi.login-avatar' })
   }
 
   async openSession(url?: string): Promise<void> {
@@ -161,7 +162,7 @@ export default class KimiAiPageEngine extends AiPage {
       const copyTrigger = msg
         .locator('.segment-assistant-actions .icon-button:has(svg[name="Copy"])')
         .first()
-      await copyTrigger.waitFor({ state: 'attached', timeout: 0 })
+      await waitForLong(copyTrigger, { state: 'attached', label: 'kimi.copy-button' })
       await msg.hover()
       await copyTrigger.scrollIntoViewIfNeeded()
       await copyTrigger.click()
@@ -196,7 +197,7 @@ export default class KimiAiPageEngine extends AiPage {
   async checkCreditLimit(): Promise<void> {
     await this.ensurePage()
     const target = this.page.locator('.modal-container .km-button:has-text("去升级")').first()
-    await target.waitFor({ state: 'visible', timeout: 0 })
+    await waitForLong(target, { state: 'visible', label: 'kimi.credit-limit' })
 
     const now = new Date()
     const until = new Date(now.getTime() + KIMI_CREDIT_RECOVERY_MS)

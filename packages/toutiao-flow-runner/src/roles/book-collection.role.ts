@@ -5,6 +5,7 @@ import { ArticleStatus } from '@toutiao-flow/db'
 import ToutiaoPage from '../browser-pages/toutiao.js'
 import { isOverviewJson, MIN_COLLECTION_NAME_LENGTH } from '../types/overview.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import { getPublishDateKey } from '../utils/publish-stat.js'
@@ -92,6 +93,11 @@ export default class BookCollectionRole extends BaseRole {
         this.priority,
       )
     } catch (error) {
+      if (error instanceof BrowserWaitTimeoutError) {
+        console.warn(`[book-collection] 浏览器等待超时，停止本次任务: ${error.message}`)
+        return
+      }
+
       const reason = error instanceof Error ? error.message : String(error)
       console.error(`[book-collection] 创建失败: book.id=${book.id}: ${reason}`)
       await this.recordFailure(book.id, book.toutiaoCollectionAttempts, reason)

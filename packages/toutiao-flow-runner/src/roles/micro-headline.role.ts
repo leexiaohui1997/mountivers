@@ -11,6 +11,7 @@ import { isMicroHeadlineData } from '../types/micro-headline.js'
 import { isOverviewJson, type OverviewJson } from '../types/overview.js'
 import { clearBookNoEngineLock, lockBookForNoEngine } from '../utils/book-no-engine.js'
 import { browserQueue } from '../utils/browser-queue.js'
+import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
@@ -93,6 +94,11 @@ export default class MicroHeadlineRole extends BaseRole {
 
         count = await this.countToday(startOfToday)
       } catch (error) {
+        if (error instanceof BrowserWaitTimeoutError) {
+          console.warn(`[micro-headline] 浏览器等待超时，停止本次任务: ${error.message}`)
+          break
+        }
+
         if (error instanceof AttachmentMissingError) {
           console.warn(
             `[micro-headline] 附件缺失，跳过本次: missing=${error.missing.join('、') || '未知'}`,

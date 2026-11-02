@@ -1,3 +1,4 @@
+import { BrowserWaitTimeoutError } from './browser-wait.js'
 import { cronNext } from './cron.js'
 import BaseRole from './role/base.js'
 
@@ -77,7 +78,15 @@ export class Scheduler {
     rt.rerun = false
     rt.running = Promise.resolve()
       .then(() => role.run())
-      .catch((err: unknown) => console.error(`[scheduler] ${role.constructor.name} 执行失败:`, err))
+      .catch((err: unknown) => {
+        if (err instanceof BrowserWaitTimeoutError) {
+          console.warn(
+            `[scheduler] ${role.constructor.name} 浏览器等待超时，停止本次任务: ${err.message}`,
+          )
+          return
+        }
+        console.error(`[scheduler] ${role.constructor.name} 执行失败:`, err)
+      })
       .finally(() => {
         rt.running = undefined
         if (rt.rerun) {
