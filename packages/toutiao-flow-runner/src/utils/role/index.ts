@@ -2,6 +2,7 @@ import { readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { isRunnerPaused } from '../runner-pause.js'
 import { Scheduler } from '../scheduler.js'
 import { sleep } from '../timer.js'
 
@@ -70,9 +71,31 @@ export async function runRoles(opts?: {
   const scheduler = new Scheduler()
 
   scheduler.init(roles, clock())
+  let lastPaused: boolean | null = null
+
   while (!opts?.signal?.aborted) {
+    let paused = false
+    try {
+      paused = await isRunnerPaused()
+    } catch (error) {
+      console.error(
+        `[scheduler] 读取暂停状态失败，继续运行: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    }
+
+    if (paused !== lastPaused) {
+      console.log(
+        paused
+          ? '[scheduler] 已暂停：不再启动新的角色任务，当前任务继续执行'
+          : '[scheduler] 已恢复：继续调度角色任务',
+      )
+      lastPaused = paused
+    }
+
     // tick 只负责启动到点角色，不等待 run 结束：不同角色并行，长任务不阻塞后续 tick
-    scheduler.tick(roles, clock())
+    scheduler.tick(roles, clock(), { paused })
     if (opts?.signal?.aborted) break
     try {
       await sleep(tickMs, opts?.signal)

@@ -22,6 +22,7 @@ interface Runtime {
  */
 export class Scheduler {
   private readonly state = new Map<BaseRole, Runtime>()
+  private paused = false
 
   /** 基于当前时间初始化所有含 cron 角色的下次触发时刻。 */
   init(roles: BaseRole[], now: number): void {
@@ -33,7 +34,19 @@ export class Scheduler {
   }
 
   /** 触发所有到点角色并立即返回(不等待 run() 结束);返回本 tick 命中的角色。 */
-  tick(roles: BaseRole[], now: number): BaseRole[] {
+  tick(roles: BaseRole[], now: number, opts: { paused?: boolean } = {}): BaseRole[] {
+    this.paused = opts.paused ?? false
+
+    // 暂停时只推进下次触发时间，不启动任何新任务，避免恢复后集中补跑
+    if (this.paused) {
+      for (const role of roles) {
+        const rt = this.state.get(role)
+        if (!rt || rt.nextRunAt === undefined) continue
+        rt.nextRunAt = cronNext(role.cron!, now)
+      }
+      return []
+    }
+
     const fired: BaseRole[] = []
     for (const role of roles) {
       const rt = this.state.get(role)
@@ -67,6 +80,11 @@ export class Scheduler {
 
   /** 并行执行入口:不 await,失败只记录日志,结束后按需补跑。 */
   private start(role: BaseRole, rt: Runtime): void {
+    if (this.paused) {
+      rt.rerun = false
+      return
+    }
+
     // 冻结可能是在 run() 内部设置的（例如任务成功后冻结），
     // 此时 finally 里的“补跑”必须重新检查，否则会绕过 tick 的冻结判断。
     if (role.freezeUntil && role.freezeUntil.getTime() > Date.now()) {
