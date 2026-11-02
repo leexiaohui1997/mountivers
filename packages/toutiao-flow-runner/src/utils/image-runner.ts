@@ -8,6 +8,7 @@ import { generateImage } from '../ai/logics/generate-image.js'
 import { removeWatermark } from '../ai/logics/remove-watermark.js'
 
 import { attachToFile, saveFile } from './attach.js'
+import { browserQueue } from './browser-queue.js'
 import { prisma } from './db.js'
 import {
   consumeJimengCredit,
@@ -15,6 +16,7 @@ import {
   setJimengCreditState,
 } from './jimeng-credit.js'
 import { incrementPublishStatField } from './publish-stat.js'
+import { TaskQueue } from './task-queue.js'
 
 import type { Ai, AiPage } from '../ai/types.js'
 import type { CheckJson } from '../types/check.js'
@@ -126,11 +128,35 @@ class ImageAiManager {
   }
 }
 
+/** 所有生图批次统一串行；内部再进入 browserQueue 占用浏览器 */
+const imageQueue = new TaskQueue(
+  {
+    onStart: (label, pending) => {
+      if (pending > 0) {
+        console.log(`[image-queue] ▶ ${label} 开始（排队 ${pending}）`)
+      }
+    },
+  },
+  { collectWindowMs: 0 },
+)
+
 /**
- * 串行执行一批图片任务。
- * 调用方必须已处于 browserQueue 任务内；engine 自己管理页面生命周期。
+ * 统一生图入口：图片批次先进入 imageQueue，再进入 browserQueue。
+ * engine 自己管理页面生命周期。
  */
-export async function runImageTasks(tasks: ImageTask[]): Promise<ImageTaskResult[]> {
+export async function runImageTasks(tasks: ImageTask[], priority = 0): Promise<ImageTaskResult[]> {
+  if (!tasks.length) return []
+
+  const label = tasks.length === 1 ? tasks[0].label : `image-batch:${tasks.length}`
+
+  return imageQueue.run(
+    label,
+    () => browserQueue.run(label, () => runImageTasksInternal(tasks), priority),
+    priority,
+  )
+}
+
+async function runImageTasksInternal(tasks: ImageTask[]): Promise<ImageTaskResult[]> {
   if (!tasks.length) return []
 
   const imageEngine = await pickEngine({ capability: 'image' })

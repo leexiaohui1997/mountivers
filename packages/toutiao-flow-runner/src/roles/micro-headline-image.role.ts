@@ -4,7 +4,6 @@ import path from 'node:path'
 import { Prisma } from '@toutiao-flow/db'
 
 import { isMicroHeadlineData, type MicroHeadlineData } from '../types/micro-headline.js'
-import { browserQueue } from '../utils/browser-queue.js'
 import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
@@ -86,13 +85,7 @@ export default class MicroHeadlineImageRole extends BaseRole {
     }))
 
     try {
-      await browserQueue.run(
-        `micro-headline-image:${item.id}`,
-        async () => {
-          await runImageTasks(tasks)
-        },
-        this.priority,
-      )
+      await runImageTasks(tasks, this.priority)
     } catch (error) {
       if (error instanceof BrowserWaitTimeoutError) {
         console.warn(`[micro-headline-image] 浏览器等待超时，停止本次任务: ${error.message}`)

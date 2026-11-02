@@ -11,7 +11,6 @@ import {
   withImagePrompt,
   type ArticleImageSpec,
 } from '../utils/article-image-plan.js'
-import { browserQueue } from '../utils/browser-queue.js'
 import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { prisma } from '../utils/db.js'
 import { IMAGE_DOWNLOAD_DIR } from '../utils/env.js'
@@ -84,13 +83,7 @@ export default class ArticleImageRole extends BaseRole {
 
     let results: ImageTaskResult[]
     try {
-      results = await browserQueue.run(
-        `article-images:${book.id}:${article.index}`,
-        async () => {
-          return await runImageTasks(tasks)
-        },
-        this.priority,
-      )
+      results = await runImageTasks(tasks, this.priority)
     } catch (error) {
       if (error instanceof BrowserWaitTimeoutError) {
         console.warn(`[article-image] 浏览器等待超时，停止本次任务: ${error.message}`)
