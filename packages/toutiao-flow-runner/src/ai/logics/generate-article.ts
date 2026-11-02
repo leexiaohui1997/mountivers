@@ -53,6 +53,7 @@ export async function generateArticle(
     prompt: `按提示词为第${opts.index}篇撰写成稿 article，以 json 代码块的格式回复。${ATTACHMENT_MISSING_INSTRUCTION}`,
     attaches: [bookFile, overviewFile, promptFile],
     sessionUrl: opts.sessionUrl,
+    answerDelayMs: 30_000,
     onResult: async (answer, append) => {
       const appendRepair = async (info: ArticleViolationInfo): Promise<void> => {
         await opts.onViolation?.(info)

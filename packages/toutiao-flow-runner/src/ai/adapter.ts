@@ -1,4 +1,5 @@
 import { attachToFile } from '../utils/attach.js'
+import { browserQueue } from '../utils/browser-queue.js'
 
 import {
   Ai,
@@ -17,6 +18,12 @@ import {
  * 并再次触发 onResult，直到某次回调不再调用 append。
  * 所有追问都会自动把上一轮回复作为附件一起上传。
  */
+/** 文本回答前让出队列的时间 */
+const ANSWER_QUEUE_YIELD_MS = 8000
+
+/** 图片回答前让出队列的时间 */
+const IMAGE_ANSWER_QUEUE_YIELD_MS = 15000
+
 export class AiPageAdapter extends Ai {
   constructor(engine: AiPage) {
     super(engine)
@@ -54,6 +61,10 @@ export class AiPageAdapter extends Ai {
     await this.engine.input(opts.prompt)
     await this.engine.send()
 
+    let answerDelayMs = opts.answerDelayMs ?? ANSWER_QUEUE_YIELD_MS
+
+    await browserQueue.suspend(answerDelayMs)
+    await this.engine.activate()
     let result = await this.raceCreditLimit(this.engine.getAnswer())
 
     while (true) {
@@ -84,12 +95,15 @@ export class AiPageAdapter extends Ai {
 
       if (!next) return result
 
+      answerDelayMs = next.answerDelayMs ?? answerDelayMs
       await this.engine.clearEditor()
       for (const file of next.attaches ?? []) {
         await this.engine.uploadFile(file)
       }
       await this.engine.input(next.prompt)
       await this.engine.send()
+      await browserQueue.suspend(answerDelayMs)
+      await this.engine.activate()
       result = await this.raceCreditLimit(this.engine.getAnswer())
     }
   }
@@ -104,6 +118,8 @@ export class AiPageAdapter extends Ai {
     }
     await this.engine.input(opts.prompt)
     await this.engine.send()
+    await browserQueue.suspend(opts.answerDelayMs ?? IMAGE_ANSWER_QUEUE_YIELD_MS)
+    await this.engine.activate()
     return await this.raceCreditLimit(this.engine.getImageAnswer())
   }
 
@@ -114,6 +130,8 @@ export class AiPageAdapter extends Ai {
     await this.engine.uploadImage(opts.image)
     await this.engine.input(opts.prompt)
     await this.engine.send()
+    await browserQueue.suspend(opts.answerDelayMs ?? IMAGE_ANSWER_QUEUE_YIELD_MS)
+    await this.engine.activate()
     return await this.raceCreditLimit(this.engine.getImageAnswer())
   }
 }

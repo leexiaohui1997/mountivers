@@ -9,6 +9,8 @@ export type InputArgs = {
   attaches?: File[]
   /** 复用的 AI 会话地址；不传则由引擎打开默认新会话 */
   sessionUrl?: string
+  /** 读取回答前让出队列的时长；不传使用适配器默认值 */
+  answerDelayMs?: number
 }
 
 export type TextToTextAppendFunc = (args: InputArgs) => Promise<void>
@@ -21,7 +23,11 @@ export type TextToTextFunc = (
 
 export type TextToImageFunc = (opts: InputArgs) => Promise<string>
 
-export type ImageToImageFunc = (opts: { image: File; prompt: string }) => Promise<string>
+export type ImageToImageFunc = (opts: {
+  image: File
+  prompt: string
+  answerDelayMs?: number
+}) => Promise<string>
 
 export abstract class Ai {
   constructor(public engine: AiPage) {}

@@ -33,6 +33,7 @@ export async function generateOverview(
     prompt: `按提示词为这本书编写概览 overview，以 json 代码块的格式回复。${ATTACHMENT_MISSING_INSTRUCTION}`,
     attaches: [bookFile, promptFile],
     sessionUrl: opts.sessionUrl,
+    answerDelayMs: 30_000,
     onResult: async (answer, append) => {
       throwIfAttachmentMissing(answer)
 
