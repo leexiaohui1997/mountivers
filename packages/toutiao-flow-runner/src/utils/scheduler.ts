@@ -79,6 +79,13 @@ export class Scheduler {
   }
 
   /** 并行执行入口:不 await,失败只记录日志,结束后按需补跑。 */
+  private hasRunningRoles(): boolean {
+    for (const runtime of this.state.values()) {
+      if (runtime.running) return true
+    }
+    return false
+  }
+
   private start(role: BaseRole, rt: Runtime): void {
     if (this.paused) {
       rt.rerun = false
@@ -107,6 +114,11 @@ export class Scheduler {
       })
       .finally(() => {
         rt.running = undefined
+
+        if (this.paused && !this.hasRunningRoles()) {
+          console.log('[scheduler] 暂停期间所有角色任务已结束，可以安全退出')
+        }
+
         if (rt.rerun) {
           this.start(role, rt)
         }
