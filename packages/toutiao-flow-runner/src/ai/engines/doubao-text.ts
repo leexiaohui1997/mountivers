@@ -1,9 +1,24 @@
+import { browserQueue } from '../../utils/browser-queue.js'
 import { waitForLong } from '../../utils/browser-wait.js'
 import { activatePage } from '../../utils/browser.js'
+import { handleDragVerification, VerificationPassedError } from '../../utils/drag-verification.js'
 import { AiPage } from '../types.js'
 
 const DOUBAO_URL = 'https://www.doubao.com/'
 const COPY_MAX_ATTEMPTS = 4
+
+/** 豆包拖拽验证的选择器，文本和生图引擎共用 */
+export const DOUBAO_CAPTCHA_SELECTORS = {
+  dialogSelector: '#vc_captcha_box',
+  promptSelector: '#vc_captcha_box .captcha_verify_bar--title',
+  dragSelector: '#vc_captcha_box .canvas-container',
+  imageSelector: '#vc_captcha_box .canvas-container canvas',
+  dropSelector: '#vc_captcha_box .drag-area',
+  confirmSelector: '#vc_captcha_box .vc-captcha-verify-pb:not(.disable)',
+  failureSelector: '#vc_captcha_box:has-text("验证失败"), #vc_captcha_box:has-text("验证超时")',
+  successSelector: '#vc_captcha_box:has-text("验证成功")',
+  retrySelector: '#vc_captcha_box .vc-captcha-refresh',
+} as const
 
 /**
  * 豆包文本引擎：只负责文字生成和附件上传。
@@ -12,7 +27,7 @@ const COPY_MAX_ATTEMPTS = 4
 export default class DoubaoTextAiPageEngine extends AiPage {
   readonly name: string = 'doubao-text'
   readonly textPriority: number | null = 10
-  readonly workPriority: number | null = 20
+  readonly workPriority: number | null = 70
   readonly imagePriority: number | null = null
   readonly watermarkPriority = null
   readonly supportedAttachmentExts = [
@@ -119,6 +134,29 @@ export default class DoubaoTextAiPageEngine extends AiPage {
   }
 
   async getAnswer(): Promise<string> {
+    await this.ensurePage()
+
+    const controller = new AbortController()
+
+    try {
+      return await Promise.race([
+        this.readAnswer(),
+        handleDragVerification({
+          ...DOUBAO_CAPTCHA_SELECTORS,
+          page: this.page,
+          engineName: this.name,
+          signal: controller.signal,
+          acquireHold: () => browserQueue.hold(),
+        }).then<string>(() => {
+          throw new VerificationPassedError()
+        }),
+      ])
+    } finally {
+      controller.abort()
+    }
+  }
+
+  private async readAnswer(): Promise<string> {
     await this.ensurePage()
     await this.page.waitForTimeout(1000)
 

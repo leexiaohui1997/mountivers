@@ -1,8 +1,10 @@
+import { browserQueue } from '../../utils/browser-queue.js'
 import { waitForLong } from '../../utils/browser-wait.js'
+import { handleDragVerification, VerificationPassedError } from '../../utils/drag-verification.js'
 import { isEngineLimited, markEngineLimited } from '../../utils/engine-limit.js'
 import { CreditLimitError } from '../error.js'
 
-import DoubaoTextAiPageEngine from './doubao-text.js'
+import DoubaoTextAiPageEngine, { DOUBAO_CAPTCHA_SELECTORS } from './doubao-text.js'
 
 /** 豆包额度恢复间隔：1 天 */
 export const DOUBAO_CREDIT_RECOVERY_MS = 24 * 60 * 60 * 1000
@@ -70,6 +72,29 @@ export default class DoubaoAiPageEngine extends DoubaoTextAiPageEngine {
   }
 
   async getImageAnswer(): Promise<string> {
+    await this.ensurePage()
+
+    const controller = new AbortController()
+
+    try {
+      return await Promise.race([
+        this.readImageAnswer(),
+        handleDragVerification({
+          ...DOUBAO_CAPTCHA_SELECTORS,
+          page: this.page,
+          engineName: this.name,
+          signal: controller.signal,
+          acquireHold: () => browserQueue.hold(),
+        }).then<string>(() => {
+          throw new VerificationPassedError()
+        }),
+      ])
+    } finally {
+      controller.abort()
+    }
+  }
+
+  private async readImageAnswer(): Promise<string> {
     await this.ensurePage()
     const image = this.page
       .locator('.v_list_row [data-testid="receive_message"]')
