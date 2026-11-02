@@ -6,10 +6,18 @@ const TextBlockSchema = z.object({
   content: z.string().min(1),
 })
 
+/** 正文小标题最多 30 字 */
+export const MAX_TITLE_BLOCK_LENGTH = 30
+
 /** 正文小标题 */
 const TitleBlockSchema = z.object({
   type: z.literal('title'),
-  content: z.string().min(1),
+  content: z
+    .string()
+    .min(1)
+    .refine((value) => Array.from(value).length <= MAX_TITLE_BLOCK_LENGTH, {
+      message: `小标题不能超过 ${MAX_TITLE_BLOCK_LENGTH} 字`,
+    }),
 })
 
 /** 插图：成稿阶段只有提示词，图片路径由生图角色回填到 content */
@@ -37,7 +45,20 @@ export const ArticleJsonSchema = z.object({
   cover: z.string().optional(),
   /** B站封面路径（生图后回填） */
   bilibiliCover: z.string().optional(),
-  content: z.array(ArticleBlockSchema).min(1),
+  content: z
+    .array(ArticleBlockSchema)
+    .min(1)
+    .superRefine((blocks, ctx) => {
+      for (let i = 1; i < blocks.length; i++) {
+        if (blocks[i].type === 'title' && blocks[i - 1].type === 'title') {
+          ctx.addIssue({
+            code: 'custom',
+            path: [i],
+            message: 'title 块不能连续出现',
+          })
+        }
+      }
+    }),
   goldenQuotes: z.array(z.string()),
   tags: z.array(z.string()),
   layoutNotes: z.string().optional(),
