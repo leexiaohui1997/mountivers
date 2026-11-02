@@ -62,8 +62,7 @@ export class AiPageAdapter extends Ai {
     }
 
     try {
-      await browserQueue.suspend(waitMs)
-      await this.engine.activate()
+      await browserQueue.suspend(waitMs, () => this.engine.activate())
     } finally {
       if (temporaryDisable) {
         endEngineSuspend(engineName)

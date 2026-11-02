@@ -40,6 +40,8 @@ export interface TaskQueueOptions {
    * 默认 0，表示不额外等待。
    */
   collectWindowMs?: number
+  /** 是否启用队列；关闭后 run() 直接执行任务，suspend() 仅等待指定时长 */
+  enabled?: boolean
 }
 
 interface QueueItem {
@@ -54,9 +56,12 @@ interface QueueItem {
 interface SuspendQueueItem {
   item: QueueItem
   resolve: () => void
+  reject: (reason?: unknown) => void
   timer?: ReturnType<typeof setTimeout>
   /** 是否真的让给了其他普通任务执行 */
   yielded: boolean
+  /** 恢复任务前执行；用于重新激活页面等恢复动作 */
+  beforeResume?: () => Promise<void>
 }
 
 type QueueEntry = { kind: 'task'; item: QueueItem } | { kind: 'lock'; suspended: SuspendQueueItem }
@@ -69,6 +74,7 @@ export class TaskQueue {
   private readonly pendingImmediateLocks: SuspendQueueItem[] = []
   private readonly hooks: TaskQueueHooks
   private readonly collectWindowMs: number
+  private enabledFlag: boolean
   private running = false
   private collectTimer: ReturnType<typeof setTimeout> | null = null
   private idleWaiters: Array<() => void> = []
@@ -79,16 +85,28 @@ export class TaskQueue {
   constructor(hooks: TaskQueueHooks = {}, options: TaskQueueOptions = {}) {
     this.hooks = hooks
     this.collectWindowMs = Math.max(0, options.collectWindowMs ?? 0)
+    this.enabledFlag = options.enabled ?? true
+  }
+
+  /** 是否启用队列；关闭后 run() 直接执行，不再排队 */
+  get enabled(): boolean {
+    return this.enabledFlag
+  }
+
+  set enabled(value: boolean) {
+    if (this.enabledFlag === value) return
+    this.enabledFlag = value
+    if (value) this.pump()
   }
 
   /** 仍在排队、尚未开始的任务数（不含当前任务和暂停任务）。 */
   get size(): number {
-    return this.entries.length + this.pendingImmediateLocks.length
+    return this.enabledFlag ? this.entries.length + this.pendingImmediateLocks.length : 0
   }
 
   /** 当前是否有任务正在执行。 */
   get isRunning(): boolean {
-    return this.running
+    return this.enabledFlag && this.running
   }
 
   /**
@@ -97,6 +115,10 @@ export class TaskQueue {
    * 前一个结束（成功或失败）后才开始下一个。
    */
   run<T>(label: string, task: () => Promise<T>, priority = 0): Promise<T> {
+    if (!this.enabledFlag) {
+      return (async () => task())()
+    }
+
     return new Promise<T>((resolve, reject) => {
       this.enqueue({
         label,
@@ -118,23 +140,36 @@ export class TaskQueue {
    *
    * 返回的 Promise 在任务重新获得队列执行权时 resolve。
    */
-  suspend(waitTime = 0): Promise<void> {
+  suspend(waitTime = 0, beforeResume?: () => Promise<void>): Promise<void> {
+    const waitMs = Math.max(0, waitTime)
+
+    // 队列关闭时没有当前任务，只保留等待语义
+    if (!this.enabledFlag) {
+      return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          Promise.resolve(beforeResume?.()).then(resolve, reject)
+        }, waitMs)
+      })
+    }
+
     if (!this.running || !this.currentItem) {
       throw new Error('suspend() 只能在队列任务执行中调用')
     }
 
     const item = this.currentItem
-    const waitMs = Math.max(0, waitTime)
 
     const suspended: SuspendQueueItem = {
       item,
       resolve: () => undefined,
+      reject: () => undefined,
       yielded: false,
+      beforeResume,
     }
     this.suspendedItems.add(suspended)
 
-    const waitPromise = new Promise<void>((resolve) => {
+    const waitPromise = new Promise<void>((resolve, reject) => {
       suspended.resolve = resolve
+      suspended.reject = reject
     })
 
     this.currentItem = null
@@ -161,6 +196,8 @@ export class TaskQueue {
 
   /** 等待队列清空（所有任务结束、无排队任务）。 */
   onIdle(): Promise<void> {
+    if (!this.enabledFlag) return Promise.resolve()
+
     if (
       !this.running &&
       this.entries.length === 0 &&
@@ -256,12 +293,23 @@ export class TaskQueue {
       this.running = true
       this.currentItem = suspended.item
 
-      if (suspended.yielded) {
-        console.log(`[task-queue] 恢复 "${suspended.item.label}"`)
+      const resume = () => {
+        if (suspended.yielded) {
+          console.log(`[task-queue] 恢复 "${suspended.item.label}"`)
+        }
+
+        suspended.resolve()
+        this.flushPendingLocks()
       }
 
-      suspended.resolve()
-      this.flushPendingLocks()
+      if (suspended.beforeResume) {
+        void suspended.beforeResume().then(resume, (error: unknown) => {
+          suspended.reject(error)
+        })
+        return
+      }
+
+      resume()
       return
     }
 
