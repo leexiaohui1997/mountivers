@@ -2,6 +2,11 @@ import { attachToFile } from '../utils/attach.js'
 import { browserQueue } from '../utils/browser-queue.js'
 
 import {
+  beginEngineSuspend,
+  endEngineSuspend,
+  shouldDisableEngineOnSuspend,
+} from './suspend-policy.js'
+import {
   Ai,
   type AiPage,
   type ImageToImageFunc,
@@ -48,6 +53,24 @@ export class AiPageAdapter extends Ai {
     }
   }
 
+  private async suspendForEngine(waitMs: number): Promise<void> {
+    const engineName = this.engine.name
+    const temporaryDisable = shouldDisableEngineOnSuspend(engineName)
+
+    if (temporaryDisable) {
+      beginEngineSuspend(engineName)
+    }
+
+    try {
+      await browserQueue.suspend(waitMs)
+      await this.engine.activate()
+    } finally {
+      if (temporaryDisable) {
+        endEngineSuspend(engineName)
+      }
+    }
+  }
+
   private async getResultWithSuspend<T>(request: Promise<T>): Promise<T> {
     let result: T | undefined
     let failure: unknown
@@ -65,10 +88,10 @@ export class AiPageAdapter extends Ai {
 
     const yieldTask = (async () => {
       while (!settled) {
-        // 先让 request 有机会完成，避免无意义的首次挂起
-        await Promise.resolve()
+        await new Promise<void>((resolve) => setTimeout(resolve, 1800))
         if (settled) break
-        await browserQueue.suspend(ANSWER_YIELD_MS)
+        await this.suspendForEngine(ANSWER_YIELD_MS)
+        await new Promise<void>((resolve) => setTimeout(resolve, 1800))
       }
     })()
 

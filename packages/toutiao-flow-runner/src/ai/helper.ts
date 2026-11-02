@@ -13,6 +13,7 @@ import QianwenAiPageEngine from './engines/qianwen.js'
 import WenxinAiPageEngine from './engines/wenxin.js'
 import YuanbaoAiPageEngine from './engines/yuanbao.js'
 import { CreditLimitError } from './error.js'
+import { isEngineTemporarilyDisabled } from './suspend-policy.js'
 
 import type { Ai, AiPage } from './types.js'
 
@@ -78,13 +79,19 @@ function matchSessionHost(engine: AiPage, sessionUrl: string): boolean {
  */
 export async function pickEngine(opts: PickEngineOptions): Promise<AiPage | null> {
   const exclude = new Set(opts.exclude ?? [])
-  const candidates = ENGINE_FACTORIES.map((create) => create())
+  const baseCandidates = ENGINE_FACTORIES.map((create) => create())
     .filter((engine) => !exclude.has(engine.name))
     .filter(
       (engine) =>
         priorityOf(engine, opts.capability) !== null &&
         supportsAttachments(engine, opts.attachments),
     )
+
+  const candidates = baseCandidates.filter((engine) => !isEngineTemporarilyDisabled(engine.name))
+
+  if (baseCandidates.length > 0 && candidates.length === 0) {
+    throw new CreditLimitError('所有可用 AI 引擎暂时被挂起', 2000)
+  }
 
   if (opts.sessionUrl) {
     const resumed = candidates.find((engine) => matchSessionHost(engine, opts.sessionUrl!))
