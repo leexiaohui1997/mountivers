@@ -12,7 +12,7 @@ export default class DeepSeekAiPageEngine extends AiPage {
   readonly name = 'deepseek'
 
   readonly textPriority: number | null = null
-  readonly workPriority: number | null = 40
+  readonly workPriority: number | null = 60
   readonly imagePriority: number | null = null
   readonly watermarkPriority: number | null = null
 

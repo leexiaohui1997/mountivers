@@ -141,21 +141,24 @@ export default class WenxinAiPageEngine extends AiPage {
   }
 
   async getImageAnswer(): Promise<string> {
-    await this.ensurePage()
-    const conver = this.page
-      .locator('.chat-qa-container div.conversation-flow-answer-container')
-      .last()
-
-    const copyBtn = conver.locator('.cs-answer-hover-menu-container .cos-icon-copy').first()
-    await waitForLong(copyBtn, { state: 'attached', label: 'wenxin.copy-btn' })
-    const image = conver.locator('div.cosd-image-scroll img.cos-image-body').first()
-    const hasImage = await image
-      .waitFor({ state: 'attached', timeout: 1000 })
-      .then(() => true)
-      .catch(() => false)
-    if (!hasImage) throw new Error('文心要求重新生成图片')
-    const src = await image.getAttribute('src')
-    if (!src) throw new Error('文心要求重新生成图片')
-    return src
+    try {
+      await this.ensurePage()
+      const conver = this.page
+        .locator('.chat-qa-container div.conversation-flow-answer-container')
+        .last()
+      const copyBtn = conver.locator('.cs-answer-hover-menu-container .cos-icon-copy').first()
+      await waitForLong(copyBtn, { state: 'visible', label: 'wenxin.copy-btn' })
+      const image = conver.locator('div.cosd-image-scroll img.cos-image-body').first()
+      const hasImage = await image
+        .waitFor({ state: 'attached', timeout: 1000 })
+        .then(() => true)
+        .catch(() => false)
+      if (!hasImage) throw new Error('文心要求重新生成图片')
+      const src = await image.getAttribute('src')
+      if (!src) throw new Error('文心要求重新生成图片')
+      return src
+    } finally {
+      await this.page.goto(WENXIN_HOME, { waitUntil: 'domcontentloaded' })
+    }
   }
 }
