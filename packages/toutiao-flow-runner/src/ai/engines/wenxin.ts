@@ -155,7 +155,7 @@ export default class WenxinAiPageEngine extends AiPage {
         return src
       })(),
       (async () => {
-        const target = conver.locator('.ai-image-generate').first()
+        const target = conver.locator('.cs-answer-hover-menu-container .cos-icon-copy').first()
         await waitForLong(target, { state: 'attached', label: 'wenxin.image-retry' })
         throw new Error('文心要求重新生成图片')
       })(),

@@ -18,11 +18,8 @@ import {
  * 并再次触发 onResult，直到某次回调不再调用 append。
  * 所有追问都会自动把上一轮回复作为附件一起上传。
  */
-/** 文本回答前让出队列的时间 */
-const ANSWER_QUEUE_YIELD_MS = 8000
-
-/** 图片回答前让出队列的时间 */
-const IMAGE_ANSWER_QUEUE_YIELD_MS = 15000
+/** 等待回答期间每次让出队列的时长 */
+const ANSWER_YIELD_MS = 2000
 
 export class AiPageAdapter extends Ai {
   constructor(engine: AiPage) {
@@ -51,6 +48,38 @@ export class AiPageAdapter extends Ai {
     }
   }
 
+  private async getResultWithSuspend<T>(request: Promise<T>): Promise<T> {
+    let result: T | undefined
+    let failure: unknown
+    let settled = false
+
+    const requestTask = (async () => {
+      try {
+        result = await request
+      } catch (error) {
+        failure = error
+      } finally {
+        settled = true
+      }
+    })()
+
+    const yieldTask = (async () => {
+      while (!settled) {
+        // 先让 request 有机会完成，避免无意义的首次挂起
+        await Promise.resolve()
+        if (settled) break
+        await browserQueue.suspend(ANSWER_YIELD_MS)
+      }
+    })()
+
+    await Promise.all([requestTask, yieldTask])
+
+    if (failure) throw failure
+
+    await this.engine.activate()
+    return result as T
+  }
+
   text2text: TextToTextFunc = async (opts) => {
     await this.engine.ensureLogin()
     await this.engine.openSession(opts.sessionUrl)
@@ -61,11 +90,8 @@ export class AiPageAdapter extends Ai {
     await this.engine.input(opts.prompt)
     await this.engine.send()
 
-    let answerDelayMs = opts.answerDelayMs ?? ANSWER_QUEUE_YIELD_MS
-
-    await browserQueue.suspend(answerDelayMs)
     await this.engine.activate()
-    let result = await this.raceCreditLimit(this.engine.getAnswer())
+    let result = await this.getResultWithSuspend(this.raceCreditLimit(this.engine.getAnswer()))
 
     while (true) {
       let next: InputArgs | undefined
@@ -95,16 +121,15 @@ export class AiPageAdapter extends Ai {
 
       if (!next) return result
 
-      answerDelayMs = next.answerDelayMs ?? answerDelayMs
+      await this.engine.activate()
       await this.engine.clearEditor()
       for (const file of next.attaches ?? []) {
         await this.engine.uploadFile(file)
       }
       await this.engine.input(next.prompt)
       await this.engine.send()
-      await browserQueue.suspend(answerDelayMs)
       await this.engine.activate()
-      result = await this.raceCreditLimit(this.engine.getAnswer())
+      result = await this.getResultWithSuspend(this.raceCreditLimit(this.engine.getAnswer()))
     }
   }
 
@@ -118,9 +143,8 @@ export class AiPageAdapter extends Ai {
     }
     await this.engine.input(opts.prompt)
     await this.engine.send()
-    await browserQueue.suspend(opts.answerDelayMs ?? IMAGE_ANSWER_QUEUE_YIELD_MS)
     await this.engine.activate()
-    return await this.raceCreditLimit(this.engine.getImageAnswer())
+    return await this.getResultWithSuspend(this.raceCreditLimit(this.engine.getImageAnswer()))
   }
 
   image2image: ImageToImageFunc = async (opts) => {
@@ -130,8 +154,7 @@ export class AiPageAdapter extends Ai {
     await this.engine.uploadImage(opts.image)
     await this.engine.input(opts.prompt)
     await this.engine.send()
-    await browserQueue.suspend(opts.answerDelayMs ?? IMAGE_ANSWER_QUEUE_YIELD_MS)
     await this.engine.activate()
-    return await this.raceCreditLimit(this.engine.getImageAnswer())
+    return await this.getResultWithSuspend(this.raceCreditLimit(this.engine.getImageAnswer()))
   }
 }

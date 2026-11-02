@@ -1,6 +1,5 @@
 import { attachToFile } from '../../utils/attach.js'
 import { BrowserWaitTimeoutError } from '../../utils/browser-wait.js'
-import { ANSWER_DELAY_MS } from '../answer-delay.js'
 
 import type { Ai } from '../types.js'
 
@@ -17,7 +16,6 @@ export async function removeWatermark(ai: Ai, opts: RemoveWatermarkOptions): Pro
       const url = await ai.image2image({
         image: opts.image,
         prompt: '去水印',
-        answerDelayMs: ANSWER_DELAY_MS.removeWatermark,
       })
       return await attachToFile({ type: 'url', path: url, filename: 'image.png' })
     } catch (error) {

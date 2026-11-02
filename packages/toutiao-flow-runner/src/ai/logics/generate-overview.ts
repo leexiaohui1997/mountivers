@@ -2,7 +2,6 @@ import { isOverviewJson, type OverviewJson } from '../../types/overview.js'
 import { attachToFile } from '../../utils/attach.js'
 import { extractJsonBlock } from '../../utils/markdown.js'
 import { renderToAttach } from '../../utils/template.js'
-import { ANSWER_DELAY_MS } from '../answer-delay.js'
 
 import { ATTACHMENT_MISSING_INSTRUCTION, throwIfAttachmentMissing } from './attachment-missing.js'
 import { buildJudgeRepair, reviewJsonContent } from './judge-json-content.js'
@@ -34,7 +33,6 @@ export async function generateOverview(
     prompt: `按提示词为这本书编写概览 overview，以 json 代码块的格式回复。${ATTACHMENT_MISSING_INSTRUCTION}`,
     attaches: [bookFile, promptFile],
     sessionUrl: opts.sessionUrl,
-    answerDelayMs: ANSWER_DELAY_MS.overview,
     onResult: async (answer, append) => {
       throwIfAttachmentMissing(answer)
 

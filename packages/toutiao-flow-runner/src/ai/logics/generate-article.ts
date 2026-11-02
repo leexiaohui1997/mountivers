@@ -4,7 +4,6 @@ import { attachToFile } from '../../utils/attach.js'
 import { extractJsonBlock } from '../../utils/markdown.js'
 import { renderToAttach, renderTemplate } from '../../utils/template.js'
 import { WORD_THRESHOLD } from '../../utils/word-count.js'
-import { ANSWER_DELAY_MS } from '../answer-delay.js'
 
 import { ATTACHMENT_MISSING_INSTRUCTION, throwIfAttachmentMissing } from './attachment-missing.js'
 import { buildJudgeRepair, reviewJsonContent } from './judge-json-content.js'
@@ -54,7 +53,6 @@ export async function generateArticle(
     prompt: `按提示词为第${opts.index}篇撰写成稿 article，以 json 代码块的格式回复。${ATTACHMENT_MISSING_INSTRUCTION}`,
     attaches: [bookFile, overviewFile, promptFile],
     sessionUrl: opts.sessionUrl,
-    answerDelayMs: ANSWER_DELAY_MS.article,
     onResult: async (answer, append) => {
       const appendRepair = async (info: ArticleViolationInfo): Promise<void> => {
         await opts.onViolation?.(info)
