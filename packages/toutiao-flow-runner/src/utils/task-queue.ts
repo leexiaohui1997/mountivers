@@ -55,12 +55,16 @@ interface SuspendQueueItem {
   item: QueueItem
   resolve: () => void
   timer?: ReturnType<typeof setTimeout>
+  /** 是否真的让给了其他普通任务执行 */
+  yielded: boolean
 }
 
 export class TaskQueue {
   private readonly items: QueueItem[] = []
   /** 已到恢复时间、等待插入队首的暂停任务 */
   private readonly resumeItems: SuspendQueueItem[] = []
+  /** 当前处于暂停状态的任务 */
+  private readonly suspendedItems = new Set<SuspendQueueItem>()
   /** 无等待时长的暂停任务：等下一个任务真正启动后，再进入 resumeItems */
   private readonly pendingImmediateResumes: SuspendQueueItem[] = []
   private readonly hooks: TaskQueueHooks
@@ -122,12 +126,12 @@ export class TaskQueue {
     const item = this.currentItem
     const waitMs = Math.max(0, waitTime)
 
-    console.log(`[task-queue] 挂起 "${item.label}"${waitMs > 0 ? ` ${waitMs}ms` : ''}`)
-
     const suspended: SuspendQueueItem = {
       item,
       resolve: () => undefined,
+      yielded: false,
     }
+    this.suspendedItems.add(suspended)
 
     const waitPromise = new Promise<void>((resolve) => {
       suspended.resolve = resolve
@@ -224,9 +228,12 @@ export class TaskQueue {
     const resume = this.resumeItems.shift()
     if (resume) {
       // 恢复暂停任务：不触发 onStart，也不消耗新的 activeTasks
+      this.suspendedItems.delete(resume)
       this.running = true
       this.currentItem = resume.item
-      console.log(`[task-queue] 恢复 "${resume.item.label}"`)
+      if (resume.yielded) {
+        console.log(`[task-queue] 恢复 "${resume.item.label}"`)
+      }
       resume.resolve()
       this.flushPendingImmediate()
       return
@@ -249,6 +256,7 @@ export class TaskQueue {
 
     const startedAt = Date.now()
     this.startHook(item)
+    this.logSuspensionsYielded(item.label)
 
     // 下一个任务已经启动，此时才允许无等待时长的暂停任务进入恢复队列
     this.flushPendingImmediate()
@@ -257,6 +265,15 @@ export class TaskQueue {
       // execute 内部已处理任务自身异常，这里只兜底，防止内部链产生 unhandledRejection
       console.error(`[task-queue] 任务 "${item.label}" 执行异常:`, error)
     })
+  }
+
+  /** 只有其他任务真正开始执行时，才记录一次挂起日志 */
+  private logSuspensionsYielded(nextLabel: string): void {
+    for (const suspended of this.suspendedItems) {
+      if (suspended.yielded) continue
+      suspended.yielded = true
+      console.log(`[task-queue] 挂起 "${suspended.item.label}"（让出给 "${nextLabel}"）`)
+    }
   }
 
   private async execute(item: QueueItem, startedAt: number): Promise<void> {
