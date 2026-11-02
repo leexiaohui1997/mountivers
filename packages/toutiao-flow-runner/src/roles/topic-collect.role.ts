@@ -19,7 +19,8 @@ const TOPIC_TARGET = 3
 const TOPIC_MIN_DISCUSSION = 1000
 
 export default class TopicCollectRole extends BaseRole {
-  cron = '* * * * * *'
+  // 临时停用话题收集，不参与自动调度
+  // cron = '* * * * * *'
   waitPrevious = true
   priority = ROLE_PRIORITY.TOPIC_COLLECT
 
