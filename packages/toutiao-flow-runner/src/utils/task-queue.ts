@@ -22,7 +22,7 @@
  * 协作式暂停：
  * - 任务内调用 `await queue.suspend(ms)` 可主动让出当前队列槽位；
  * - 等待期间队列继续执行其他任务；
- * - 到期后的恢复项会插到队首，等当前任务结束后立即恢复原任务。
+ * - 到期后的 lock 会插到队首，等当前任务结束后立即恢复原任务。
  */
 
 /** 队列生命周期回调，用于日志、埋点或测试。回调抛错不会影响队列推进。 */
@@ -59,14 +59,14 @@ interface SuspendQueueItem {
   yielded: boolean
 }
 
+type QueueEntry = { kind: 'task'; item: QueueItem } | { kind: 'lock'; suspended: SuspendQueueItem }
+
 export class TaskQueue {
-  private readonly items: QueueItem[] = []
-  /** 已到恢复时间、等待插入队首的暂停任务 */
-  private readonly resumeItems: SuspendQueueItem[] = []
+  private readonly entries: QueueEntry[] = []
   /** 当前处于暂停状态的任务 */
   private readonly suspendedItems = new Set<SuspendQueueItem>()
-  /** 无等待时长的暂停任务：等下一个任务真正启动后，再进入 resumeItems */
-  private readonly pendingImmediateResumes: SuspendQueueItem[] = []
+  /** 无等待时长的暂停任务：等下一个任务真正启动后，再进入 entries 队首 */
+  private readonly pendingImmediateLocks: SuspendQueueItem[] = []
   private readonly hooks: TaskQueueHooks
   private readonly collectWindowMs: number
   private running = false
@@ -83,7 +83,7 @@ export class TaskQueue {
 
   /** 仍在排队、尚未开始的任务数（不含当前任务和暂停任务）。 */
   get size(): number {
-    return this.items.length + this.resumeItems.length + this.pendingImmediateResumes.length
+    return this.entries.length + this.pendingImmediateLocks.length
   }
 
   /** 当前是否有任务正在执行。 */
@@ -112,9 +112,9 @@ export class TaskQueue {
   /**
    * 暂停当前任务并让出队列。
    *
-   * - 不传等待时长：等下一个任务启动后，把恢复项插入队首；
+   * - 不传等待时长：等下一个任务启动后，把 lock 插入队首；
    * - 传入等待时长：等待期间队列继续执行其他任务，时间到后插入队首；
-   * - 恢复项只有在当前任务结束后才会执行。
+   * - lock 只有在当前任务结束后才会执行。
    *
    * 返回的 Promise 在任务重新获得队列执行权时 resolve。
    */
@@ -142,18 +142,17 @@ export class TaskQueue {
 
     if (waitMs > 0) {
       suspended.timer = setTimeout(() => {
-        this.resumeItems.unshift(suspended)
-        this.pump()
+        this.enqueueLock(suspended)
       }, waitMs)
     } else {
-      this.pendingImmediateResumes.push(suspended)
+      this.pendingImmediateLocks.push(suspended)
     }
 
     this.pump()
 
     // 没有下一个任务可启动时，无等待时长的暂停应立即恢复
     if (waitMs === 0 && !this.running && !this.collectTimer) {
-      this.flushPendingImmediate()
+      this.flushPendingLocks()
       this.pump()
     }
 
@@ -164,9 +163,8 @@ export class TaskQueue {
   onIdle(): Promise<void> {
     if (
       !this.running &&
-      this.items.length === 0 &&
-      this.resumeItems.length === 0 &&
-      this.pendingImmediateResumes.length === 0 &&
+      this.entries.length === 0 &&
+      this.pendingImmediateLocks.length === 0 &&
       this.activeTasks === 0
     ) {
       return Promise.resolve()
@@ -176,21 +174,31 @@ export class TaskQueue {
     })
   }
 
-  /** 按优先级插入队列；同优先级保持提交顺序（FIFO）。 */
+  /** 按优先级插入普通任务；同优先级保持提交顺序（FIFO）。 */
   private enqueue(item: QueueItem): void {
-    const index = this.items.findIndex((queued) => queued.priority < item.priority)
+    const index = this.entries.findIndex(
+      (entry) => entry.kind === 'task' && entry.item.priority < item.priority,
+    )
+
+    const taskEntry: QueueEntry = { kind: 'task', item }
     if (index === -1) {
-      this.items.push(item)
+      this.entries.push(taskEntry)
     } else {
-      this.items.splice(index, 0, item)
+      this.entries.splice(index, 0, taskEntry)
     }
   }
 
+  /** 把一个暂存任务恢复项插入队首 */
+  private enqueueLock(suspended: SuspendQueueItem): void {
+    this.entries.unshift({ kind: 'lock', suspended })
+    this.pump()
+  }
+
   /** 无等待时长的恢复项：等下一个任务启动后再插入队首 */
-  private flushPendingImmediate(): void {
-    while (this.pendingImmediateResumes.length > 0) {
-      const suspended = this.pendingImmediateResumes.shift()!
-      this.resumeItems.unshift(suspended)
+  private flushPendingLocks(): void {
+    while (this.pendingImmediateLocks.length > 0) {
+      const suspended = this.pendingImmediateLocks.shift()!
+      this.entries.unshift({ kind: 'lock', suspended })
     }
   }
 
@@ -198,13 +206,19 @@ export class TaskQueue {
     if (this.running || this.collectTimer) return
 
     // 没有普通任务但已有可恢复任务时，直接恢复
-    if (this.items.length === 0) {
-      this.flushPendingImmediate()
-      if (this.resumeItems.length > 0) {
+    if (this.entries.length === 0) {
+      this.flushPendingLocks()
+      if (this.entries.length > 0) {
         this.dispatch()
         return
       }
       this.resolveIdle()
+      return
+    }
+
+    // lock 在队首时不需要等待收集窗口
+    if (this.entries[0].kind === 'lock') {
+      this.dispatch()
       return
     }
 
@@ -221,28 +235,14 @@ export class TaskQueue {
     }, this.collectWindowMs)
   }
 
-  /** 取出当前优先级最高的任务，或执行队首恢复项。 */
+  /** 取出当前优先级最高的任务，或执行队首 lock。 */
   private dispatch(): void {
     if (this.running) return
 
-    const resume = this.resumeItems.shift()
-    if (resume) {
-      // 恢复暂停任务：不触发 onStart，也不消耗新的 activeTasks
-      this.suspendedItems.delete(resume)
-      this.running = true
-      this.currentItem = resume.item
-      if (resume.yielded) {
-        console.log(`[task-queue] 恢复 "${resume.item.label}"`)
-      }
-      resume.resolve()
-      this.flushPendingImmediate()
-      return
-    }
-
-    const item = this.items.shift()
-    if (!item) {
-      this.flushPendingImmediate()
-      if (this.resumeItems.length > 0) {
+    const entry = this.entries.shift()
+    if (!entry) {
+      this.flushPendingLocks()
+      if (this.entries.length > 0) {
         this.dispatch()
         return
       }
@@ -250,6 +250,22 @@ export class TaskQueue {
       return
     }
 
+    if (entry.kind === 'lock') {
+      const suspended = entry.suspended
+      this.suspendedItems.delete(suspended)
+      this.running = true
+      this.currentItem = suspended.item
+
+      if (suspended.yielded) {
+        console.log(`[task-queue] 恢复 "${suspended.item.label}"`)
+      }
+
+      suspended.resolve()
+      this.flushPendingLocks()
+      return
+    }
+
+    const item = entry.item
     this.running = true
     this.currentItem = item
     this.activeTasks++
@@ -259,7 +275,7 @@ export class TaskQueue {
     this.logSuspensionsYielded(item.label)
 
     // 下一个任务已经启动，此时才允许无等待时长的暂停任务进入恢复队列
-    this.flushPendingImmediate()
+    this.flushPendingLocks()
 
     void this.execute(item, startedAt).catch((error: unknown) => {
       // execute 内部已处理任务自身异常，这里只兜底，防止内部链产生 unhandledRejection
@@ -308,9 +324,8 @@ export class TaskQueue {
   private resolveIdle(): void {
     if (
       this.running ||
-      this.items.length > 0 ||
-      this.resumeItems.length > 0 ||
-      this.pendingImmediateResumes.length > 0 ||
+      this.entries.length > 0 ||
+      this.pendingImmediateLocks.length > 0 ||
       this.activeTasks > 0
     ) {
       return
@@ -323,7 +338,7 @@ export class TaskQueue {
 
   private startHook(item: QueueItem): void {
     try {
-      this.hooks.onStart?.(item.label, this.items.length, item.priority)
+      this.hooks.onStart?.(item.label, this.entries.length, item.priority)
     } catch (error) {
       console.error(`[task-queue] onStart 回调异常（已忽略）:`, error)
     }
@@ -331,7 +346,7 @@ export class TaskQueue {
 
   private finishHook(item: QueueItem, startedAt: number, error: unknown): void {
     try {
-      this.hooks.onFinish?.(item.label, Date.now() - startedAt, error, this.items.length)
+      this.hooks.onFinish?.(item.label, Date.now() - startedAt, error, this.entries.length)
     } catch (hookError) {
       console.error(`[task-queue] onFinish 回调异常（已忽略）:`, hookError)
     }
