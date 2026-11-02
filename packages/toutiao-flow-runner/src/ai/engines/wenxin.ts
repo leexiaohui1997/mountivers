@@ -142,15 +142,23 @@ export default class WenxinAiPageEngine extends AiPage {
 
   async getImageAnswer(): Promise<string> {
     await this.ensurePage()
-    const image = this.page
+    const conver = this.page
       .locator('.chat-qa-container div.conversation-flow-answer-container')
       .last()
-      .locator('div.cosd-image-scroll img.cos-image-body')
-      .first()
-    await image.waitFor({ state: 'attached', timeout: 45_000 })
 
-    const src = await image.getAttribute('src')
-    if (!src) throw new Error('文心出图结果图 src 为空')
-    return src
+    return await Promise.race([
+      (async () => {
+        const image = conver.locator('div.cosd-image-scroll img.cos-image-body').first()
+        await waitForLong(image, { state: 'attached', label: 'wenxin.image' })
+        const src = await image.getAttribute('src')
+        if (!src) throw new Error('文心要求重新生成图片')
+        return src
+      })(),
+      (async () => {
+        const target = conver.locator('.ai-image-generate').first()
+        await waitForLong(target, { state: 'attached', label: 'wenxin.image-retry' })
+        throw new Error('文心要求重新生成图片')
+      })(),
+    ])
   }
 }
