@@ -27,7 +27,7 @@ export class QianwenCreditLimitError extends CreditLimitError {
 export default class QianwenAiPageEngine extends AiPage {
   readonly name = 'qianwen'
   readonly textPriority = 20
-  readonly workPriority = 30
+  readonly workPriority = 40
   readonly imagePriority = null
   readonly watermarkPriority = null
   readonly supportedAttachmentExts = [

@@ -90,6 +90,7 @@ export default class DoubaoTextAiPageEngine extends AiPage {
       await this.page.goto(target)
     }
     await this.page.waitForLoadState('domcontentloaded', { timeout: 30000 })
+    await this.switchToWork()
   }
 
   async clearEditor(): Promise<void> {
@@ -247,5 +248,13 @@ export default class DoubaoTextAiPageEngine extends AiPage {
         element.dispatchEvent(new Event('input', { bubbles: true }))
       })
     }
+  }
+
+  private async switchToWork() {
+    await this.ensurePage()
+    const btn = this.page.locator('[data-conversation-mode-switch] button:has-text("工作")')
+    await btn.waitFor({ state: 'visible' })
+    await btn.click()
+    await this.page.waitForTimeout(300)
   }
 }

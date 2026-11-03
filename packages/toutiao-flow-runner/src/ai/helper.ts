@@ -6,7 +6,7 @@ import { ENABLE_JSON_CONTENT_JUDGE } from '../utils/env.js'
 import { AiPageAdapter } from './adapter.js'
 import DeepSeekAiPageEngine from './engines/deepseek.js'
 import DoubaoTextAiPageEngine from './engines/doubao-text.js'
-import DoubaoAiPageEngine from './engines/doubao.js'
+// import DoubaoAiPageEngine from './engines/doubao.js'
 import JimengAiPageEngine from './engines/jimeng.js'
 import KimiAiPageEngine from './engines/kimi.js'
 import QianwenAiPageEngine from './engines/qianwen.js'
@@ -37,7 +37,7 @@ export interface PickEngineOptions {
 const ENGINE_FACTORIES: Array<() => AiPage> = [
   () => new QianwenAiPageEngine(),
   () => new DoubaoTextAiPageEngine(),
-  () => new DoubaoAiPageEngine(),
+  // () => new DoubaoAiPageEngine(),
   () => new DeepSeekAiPageEngine(),
   () => new YuanbaoAiPageEngine(),
   () => new JimengAiPageEngine(),
