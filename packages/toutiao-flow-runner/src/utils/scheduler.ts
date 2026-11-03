@@ -6,18 +6,16 @@ import BaseRole from './role/base.js'
 interface Runtime {
   /** 下一次应触发时刻(毫秒);仅含 cron 的角色有值。 */
   nextRunAt?: number
-  /** 正在执行的 run() Promise;为空表示空闲。 */
-  running?: Promise<void>
-  /** 运行期间又到点且 waitPrevious=true 时置位,结束后补跑一次(多次到点合并)。 */
-  rerun?: boolean
+  /** 当前仍在执行的 run()；同一角色可能同时有多个。 */
+  activeRuns: Set<Promise<void>>
 }
 
 /**
  * 调度核心:维护角色运行态、处理 waitPrevious、并行触发、容错。
  * - tick 只负责"到点即启动",不等待角色结束,因此不同角色可以并行执行;
  * - 同一角色是否允许重入由 waitPrevious 决定:
- *   true  -> 本次到点合并为"上次结束后补跑一次";
- *   false -> 本次到点直接跳过。
+ *   true  -> 上次仍在执行时跳过本次触发;
+ *   false -> 到点直接启动新的 run，允许同一角色并发。
  * 纯时间计算委托给 cron.ts,时钟来源由调用方传入。
  */
 export class Scheduler {
@@ -28,7 +26,10 @@ export class Scheduler {
   init(roles: BaseRole[], now: number): void {
     for (const role of roles) {
       if (role.cron) {
-        this.state.set(role, { nextRunAt: cronNext(role.cron, now) })
+        this.state.set(role, {
+          nextRunAt: cronNext(role.cron, now),
+          activeRuns: new Set(),
+        })
       }
     }
   }
@@ -67,12 +68,9 @@ export class Scheduler {
     return fired
   }
 
-  /** 启动一次 run;该角色正在执行时按 waitPrevious 决定补跑还是跳过。 */
+  /** 启动一次 run；waitPrevious=true 且上次仍在执行时跳过。 */
   private fire(role: BaseRole, rt: Runtime): void {
-    if (rt.running) {
-      if (role.waitPrevious) {
-        rt.rerun = true // 合并到"上次结束后补跑一次",避免运行期间堆积多次触发
-      }
+    if (role.waitPrevious && rt.activeRuns.size > 0) {
       return
     }
     this.start(role, rt)
@@ -81,27 +79,21 @@ export class Scheduler {
   /** 并行执行入口:不 await,失败只记录日志,结束后按需补跑。 */
   private hasRunningRoles(): boolean {
     for (const runtime of this.state.values()) {
-      if (runtime.running) return true
+      if (runtime.activeRuns.size > 0) return true
     }
     return false
   }
 
   private start(role: BaseRole, rt: Runtime): void {
-    if (this.paused) {
-      rt.rerun = false
-      return
-    }
+    if (this.paused) return
 
-    // 冻结可能是在 run() 内部设置的（例如任务成功后冻结），
-    // 此时 finally 里的“补跑”必须重新检查，否则会绕过 tick 的冻结判断。
+    // 冻结可能在 run() 内部被设置；此时不再启动新的 run
     if (role.freezeUntil && role.freezeUntil.getTime() > Date.now()) {
-      rt.rerun = false
-      console.log(`[scheduler] ${role.constructor.name} 已冻结，跳过本次补跑`)
+      console.log(`[scheduler] ${role.constructor.name} 已冻结，跳过本次触发`)
       return
     }
 
-    rt.rerun = false
-    rt.running = Promise.resolve()
+    const run: Promise<void> = Promise.resolve()
       .then(() => role.run())
       .catch((err: unknown) => {
         if (err instanceof BrowserWaitTimeoutError) {
@@ -113,15 +105,13 @@ export class Scheduler {
         console.error(`[scheduler] ${role.constructor.name} 执行失败:`, err)
       })
       .finally(() => {
-        rt.running = undefined
+        rt.activeRuns.delete(run)
 
         if (this.paused && !this.hasRunningRoles()) {
           console.log('[scheduler] 暂停期间所有角色任务已结束，可以安全退出')
         }
-
-        if (rt.rerun) {
-          this.start(role, rt)
-        }
       })
+
+    rt.activeRuns.add(run)
   }
 }
