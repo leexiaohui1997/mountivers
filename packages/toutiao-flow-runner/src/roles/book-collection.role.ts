@@ -8,7 +8,8 @@ import { browserQueue } from '../utils/browser-queue.js'
 import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
-import { getPublishDateKey } from '../utils/publish-stat.js'
+import { DAILY_PUBLISH_LIMIT, getPublishLimitUntil } from '../utils/publish-limit.js'
+import { getPublishDateKey, getPublishSuccessCount } from '../utils/publish-stat.js'
 import BaseRole from '../utils/role/base.js'
 import { ROLE_PRIORITY } from '../utils/role-priority.js'
 
@@ -33,6 +34,12 @@ export default class BookCollectionRole extends BaseRole {
   priority = ROLE_PRIORITY.COLLECTION
 
   async run(): Promise<void> {
+    const publishedToday = await getPublishSuccessCount()
+    if (publishedToday >= DAILY_PUBLISH_LIMIT) return
+
+    const limitUntil = await getPublishLimitUntil()
+    if (limitUntil) return
+
     const book = await prisma.book.findFirst({
       where: {
         toutiaoCollectionCreated: false,

@@ -1,5 +1,8 @@
 import { prisma } from './db.js'
 
+/** 每日发布文章数量上限 */
+export const DAILY_PUBLISH_LIMIT = 47
+
 /** 头条每日发布限额状态 key */
 export const PUBLISH_LIMIT_KEY = 'toutiao-publish-limit'
 

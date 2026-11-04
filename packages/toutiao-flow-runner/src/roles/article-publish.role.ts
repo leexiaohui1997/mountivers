@@ -15,6 +15,7 @@ import { BrowserWaitTimeoutError } from '../utils/browser-wait.js'
 import { getPage, releasePage } from '../utils/browser.js'
 import { prisma } from '../utils/db.js'
 import {
+  DAILY_PUBLISH_LIMIT,
   getNextLocalMidnight,
   getPublishLimitUntil,
   setPublishLimitUntil,
@@ -33,9 +34,6 @@ const COLLECTION_FREEZE_MS = 10 * 60 * 1000
 
 /** 发布成功后的角色冻结时长 */
 const SUCCESS_FREEZE_MS = 5 * 60 * 1000
-
-/** 每日发布文章数量上限 */
-const DAILY_PUBLISH_LIMIT = 47
 
 const PUBLISH_PAGE_ID = 'toutiao-publish'
 
