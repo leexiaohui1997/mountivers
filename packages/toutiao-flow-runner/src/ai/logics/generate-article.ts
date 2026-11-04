@@ -1,3 +1,9 @@
+import {
+  buildArticleQualityRepair,
+  MAX_QUALITY_ATTEMPTS,
+  reviewArticleQuality,
+} from '../../quality/article-quality.js'
+import { buildAuthorVoicePrompt } from '../../quality/author-voice.js'
 import { isArticleJson, type ArticleJson } from '../../types/article.js'
 import { validateArticle } from '../../utils/article-validator.js'
 import { attachToFile } from '../../utils/attach.js'
@@ -45,9 +51,15 @@ export async function generateArticle(
     filename: 'overview.json',
     content: JSON.stringify(opts.overview, null, 2),
   })
-  const promptFile = await renderToAttach('article.prompt', '成稿编写提示词.md')
+  const promptFile = await renderToAttach(
+    'article.prompt',
+    { authorVoice: buildAuthorVoicePrompt() },
+    '成稿编写提示词.md',
+  )
 
   let data: ArticleJson | undefined
+  let bestQuality: { data: ArticleJson; overall: number } | null = null
+  let qualityAttempts = 0
 
   await ai.text2text({
     prompt: `按提示词为第${opts.index}篇撰写成稿 article，以 json 代码块的格式回复。${ATTACHMENT_MISSING_INSTRUCTION}`,
@@ -106,7 +118,36 @@ export async function generateArticle(
           return
         }
 
-        data = articleJson
+        const quality = await reviewArticleQuality(opts.judgeAi, articleJson)
+        if (!quality) {
+          data = articleJson
+          return
+        }
+
+        if (quality.passed) {
+          data = articleJson
+          return
+        }
+
+        if (!bestQuality || quality.overall > bestQuality.overall) {
+          bestQuality = { data: articleJson, overall: quality.overall }
+        }
+
+        qualityAttempts++
+        console.warn(
+          `[article-quality] 第 ${qualityAttempts}/${MAX_QUALITY_ATTEMPTS} 次评分未达标: ${quality.overall.toFixed(2)}`,
+        )
+
+        if (qualityAttempts >= MAX_QUALITY_ATTEMPTS) {
+          console.warn(
+            `[article-quality] 已达到重写上限，采用最高分版本: ${bestQuality.overall.toFixed(2)}`,
+          )
+          data = bestQuality.data
+          return
+        }
+
+        await ai.activate()
+        await append({ prompt: buildArticleQualityRepair(quality) })
         return
       }
 
