@@ -9,6 +9,7 @@ const COPY_MAX_ATTEMPTS = 4
 
 /** 豆包拖拽验证的选择器，文本和生图引擎共用 */
 export const DOUBAO_CAPTCHA_SELECTORS = {
+  iframeSelector: '',
   dialogSelector: '#vc_captcha_box',
   promptSelector: '#vc_captcha_box .captcha_verify_bar--title',
   dragSelector: '#vc_captcha_box .canvas-container',

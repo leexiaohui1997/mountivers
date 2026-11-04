@@ -1,10 +1,12 @@
 import { waitForLong } from './browser-wait.js'
 import { activatePage } from './browser.js'
 
-import type { Page } from 'playwright'
+import type { FrameLocator, Page } from 'playwright'
 
 export interface DragVerificationOptions {
   page: Page
+  /** iframe 选择器；验证元素在 iframe 内时填写 */
+  iframeSelector?: string
   /** 当前正在验证的引擎名，用于嵌套验证时排除 */
   engineName: string
   /** 弹窗层元素选择器 */
@@ -105,8 +107,8 @@ function parseIndexes(answer: string, max: number): number[] {
   return indexes
 }
 
-async function captureImages(page: Page, selector: string): Promise<File[]> {
-  const images = await page.locator(selector).all()
+async function captureImages(root: Page | FrameLocator, selector: string): Promise<File[]> {
+  const images = await root.locator(selector).all()
   if (images.length === 0) throw new Error('验证图片列表为空')
 
   const files: File[] = []
@@ -166,7 +168,8 @@ export async function handleDragVerification(opts: DragVerificationOptions): Pro
     throw new Error('拖拽验证缺少 engineName')
   }
 
-  const dialog = opts.page.locator(opts.dialogSelector).first()
+  const root = opts.iframeSelector ? opts.page.frameLocator(opts.iframeSelector) : opts.page
+  const dialog = root.locator(opts.dialogSelector).first()
   await waitWithAbort(
     waitForLong(dialog, { state: 'visible', label: 'drag-verification.dialog' }),
     opts.signal,
@@ -188,7 +191,7 @@ export async function handleDragVerification(opts: DragVerificationOptions): Pro
       import('../ai/adapter.js'),
     ])
 
-    const initialImages = await captureImages(opts.page, opts.imageSelector)
+    const initialImages = await captureImages(root, opts.imageSelector)
 
     const engine = await pickEngine({
       capability: 'text',
@@ -201,18 +204,18 @@ export async function handleDragVerification(opts: DragVerificationOptions): Pro
 
     ai = new AiPageAdapter(engine)
 
-    const dropTarget = opts.page.locator(opts.dropSelector).first()
-    const confirm = opts.page.locator(opts.confirmSelector).first()
-    const success = opts.page.locator(opts.successSelector).first()
-    const failure = opts.page.locator(opts.failureSelector).first()
-    const retry = opts.page.locator(opts.retrySelector).first()
+    const dropTarget = root.locator(opts.dropSelector).first()
+    const confirm = root.locator(opts.confirmSelector).first()
+    const success = root.locator(opts.successSelector).first()
+    const failure = root.locator(opts.failureSelector).first()
+    const retry = root.locator(opts.retrySelector).first()
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       await activatePage(opts.page)
 
-      const prompt = await opts.page.locator(opts.promptSelector).first().innerText()
-      const imageFiles = await captureImages(opts.page, opts.imageSelector)
-      const dragElements = await opts.page.locator(opts.dragSelector).all()
+      const prompt = await root.locator(opts.promptSelector).first().innerText()
+      const imageFiles = await captureImages(root, opts.imageSelector)
+      const dragElements = await root.locator(opts.dragSelector).all()
       if (dragElements.length !== imageFiles.length) {
         throw new Error(
           `拖拽元素数量(${dragElements.length})与图片数量(${imageFiles.length})不一致`,
